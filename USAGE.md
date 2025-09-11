@@ -195,6 +195,7 @@ GroupID,Master,File,Path,MatchReasons
 
 ### Supported Image Formats
 - JPEG, PNG, TIFF, BMP, GIF
+- HEIC, HEIF (Apple's modern image formats)
 - Most common image formats supported by Pillow
 - PDF files also supported for document scanning
 

@@ -143,6 +143,28 @@ class LineupApp:
         )
         self.moveto_clear_btn.pack(side="left", padx=(0, 5))
         
+        # Group navigation buttons
+        self.nav_frame = ctk.CTkFrame(self.toolbar)
+        self.nav_frame.pack(side="left", padx=20)
+        
+        self.prev_group_btn = ctk.CTkButton(
+            self.nav_frame,
+            text="◀ Previous Group (P)",
+            command=self.go_to_previous_group,
+            width=130,
+            state="disabled"
+        )
+        self.prev_group_btn.pack(side="left", padx=2)
+        
+        self.next_group_btn = ctk.CTkButton(
+            self.nav_frame,
+            text="Next Group ▶ (N)",
+            command=self.go_to_next_group,
+            width=130,
+            state="disabled"
+        )
+        self.next_group_btn.pack(side="left", padx=2)
+        
         # Hide single groups toggle
         self.hide_single_switch = ctk.CTkSwitch(
             self.toolbar,
@@ -265,6 +287,50 @@ class LineupApp:
             font=ctk.CTkFont(size=14)
         )
         self.select_message.pack(expand=True)
+        
+        # Setup keyboard shortcuts
+        self.setup_keyboard_shortcuts()
+    
+    def setup_keyboard_shortcuts(self):
+        """Setup keyboard shortcuts for the main application."""
+        # Bind keyboard events to the root window
+        self.root.bind('<KeyPress-d>', lambda e: self.keyboard_delete())
+        self.root.bind('<KeyPress-D>', lambda e: self.keyboard_delete())
+        self.root.bind('<KeyPress-m>', lambda e: self.keyboard_move())
+        self.root.bind('<KeyPress-M>', lambda e: self.keyboard_move())
+        self.root.bind('<KeyPress-n>', lambda e: self.keyboard_next_group())
+        self.root.bind('<KeyPress-N>', lambda e: self.keyboard_next_group())
+        self.root.bind('<KeyPress-p>', lambda e: self.keyboard_previous_group())
+        self.root.bind('<KeyPress-P>', lambda e: self.keyboard_previous_group())
+        
+        # Make sure the window can receive focus for keyboard events
+        self.root.focus_set()
+        
+        logger.debug("Keyboard shortcuts initialized: D=Delete, M=Move, N=Next Group, P=Previous Group")
+    
+    def keyboard_delete(self):
+        """Handle keyboard shortcut for delete."""
+        if hasattr(self, 'delete_btn') and self.delete_btn.cget('state') == 'normal':
+            logger.info("Keyboard shortcut: Delete (D) pressed")
+            self.delete_selected_images()
+    
+    def keyboard_move(self):
+        """Handle keyboard shortcut for move."""
+        if hasattr(self, 'move_btn') and self.move_btn.cget('state') == 'normal':
+            logger.info("Keyboard shortcut: Move (M) pressed")
+            self.move_selected_images()
+    
+    def keyboard_next_group(self):
+        """Handle keyboard shortcut for next group."""
+        if hasattr(self, 'next_group_btn') and self.next_group_btn.cget('state') == 'normal':
+            logger.info("Keyboard shortcut: Next Group (N) pressed")
+            self.go_to_next_group()
+    
+    def keyboard_previous_group(self):
+        """Handle keyboard shortcut for previous group."""
+        if hasattr(self, 'prev_group_btn') and self.prev_group_btn.cget('state') == 'normal':
+            logger.info("Keyboard shortcut: Previous Group (P) pressed")
+            self.go_to_previous_group()
     
     def populate_group_list(self):
         """Populate the group list with buttons."""
@@ -305,6 +371,9 @@ class LineupApp:
             displayed_groups += 1
         
         logger.debug(f"Displayed {displayed_groups} groups (hiding single groups: {self.hide_single_groups})")
+        
+        # Update navigation button states
+        self.update_navigation_buttons()
     
     def update_group_selection_visual(self, selected_group_id: str):
         """Update visual feedback for group selection."""
@@ -366,7 +435,7 @@ class LineupApp:
         # Action buttons
         self.delete_btn = ctk.CTkButton(
             self.action_frame,
-            text="Delete Selected",
+            text="Delete Selected (D)",
             command=self.delete_selected_images,
             state="disabled"
         )
@@ -374,7 +443,7 @@ class LineupApp:
         
         self.move_btn = ctk.CTkButton(
             self.action_frame,
-            text="Move Selected",
+            text="Move Selected (M)",
             command=self.move_selected_images,
             state="disabled"
         )
@@ -560,9 +629,9 @@ class LineupApp:
         # Update move button text based on pre-selected directory
         if hasattr(self, 'move_btn'):
             if self.move_to_directory and self.move_to_directory.exists():
-                self.move_btn.configure(text="Move to Pre-selected")
+                self.move_btn.configure(text="Move to Pre-selected (M)")
             else:
-                self.move_btn.configure(text="Move Selected")
+                self.move_btn.configure(text="Move Selected (M)")
     
     def delete_selected_images(self):
         """Delete selected images."""
@@ -841,6 +910,58 @@ class LineupApp:
                 # Re-select current group to update visual feedback
                 self.update_group_selection_visual(current_group)
     
+    def go_to_previous_group(self):
+        """Navigate to the previous group."""
+        if not self.current_group or not self.group_buttons:
+            return
+        
+        # Get list of available groups
+        available_groups = list(self.group_buttons.keys())
+        
+        if self.current_group in available_groups:
+            current_index = available_groups.index(self.current_group)
+            # Go to previous group (wrap to end if at beginning)
+            if current_index > 0:
+                previous_group = available_groups[current_index - 1]
+            else:
+                previous_group = available_groups[-1]  # Wrap to last group
+            
+            logger.info(f"Navigating from group {self.current_group} to previous group {previous_group}")
+            self.select_group(previous_group)
+            self.show_operation_status(f"Navigated to previous group: {previous_group}", "blue")
+    
+    def go_to_next_group(self):
+        """Navigate to the next group."""
+        if not self.current_group or not self.group_buttons:
+            return
+        
+        # Get list of available groups
+        available_groups = list(self.group_buttons.keys())
+        
+        if self.current_group in available_groups:
+            current_index = available_groups.index(self.current_group)
+            # Go to next group (wrap to beginning if at end)
+            if current_index < len(available_groups) - 1:
+                next_group = available_groups[current_index + 1]
+            else:
+                next_group = available_groups[0]  # Wrap to first group
+            
+            logger.info(f"Navigating from group {self.current_group} to next group {next_group}")
+            self.select_group(next_group)
+            self.show_operation_status(f"Navigated to next group: {next_group}", "blue")
+    
+    def update_navigation_buttons(self):
+        """Update the state of navigation buttons based on available groups."""
+        if not hasattr(self, 'prev_group_btn') or not hasattr(self, 'next_group_btn'):
+            return
+            
+        # Enable buttons if there are multiple groups available
+        has_groups = len(self.group_buttons) > 1
+        state = "normal" if has_groups else "disabled"
+        
+        self.prev_group_btn.configure(state=state)
+        self.next_group_btn.configure(state=state)
+
     def toggle_dark_mode(self):
         """Toggle between light and dark mode."""
         if self.dark_mode_switch.get():

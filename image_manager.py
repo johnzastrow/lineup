@@ -3,6 +3,14 @@ from PIL import Image, ImageTk
 import customtkinter as ctk
 from pathlib import Path
 import logging
+
+# Register HEIF/HEIC support
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+    logging.info("HEIF/HEIC support enabled via pillow-heif")
+except ImportError:
+    logging.warning("pillow-heif not available - HEIF/HEIC files will not be supported")
 from typing import Dict, Optional, Tuple
 import threading
 import json
@@ -405,7 +413,7 @@ class ImageViewerWindow:
             # Group navigation
             self.prev_group_btn = ctk.CTkButton(
                 self.group_info_frame,
-                text="◀ Prev Group",
+                text="◀ Prev Group (P)",
                 command=self.previous_group,
                 width=100
             )
@@ -422,7 +430,7 @@ class ImageViewerWindow:
             # Next group button
             self.next_group_btn = ctk.CTkButton(
                 self.group_info_frame,
-                text="Next Group ▶",
+                text="Next Group ▶ (N)",
                 command=self.next_group,
                 width=100
             )
@@ -486,7 +494,7 @@ class ImageViewerWindow:
         # Delete button
         self.delete_btn = ctk.CTkButton(
             self.action_frame,
-            text="Delete Image",
+            text="Delete Image (D)",
             command=self.delete_current_image,
             width=100,
             fg_color="red",
@@ -497,7 +505,7 @@ class ImageViewerWindow:
         # Move button
         self.move_btn = ctk.CTkButton(
             self.action_frame,
-            text="Move Image",
+            text="Move Image (M)",
             command=self.move_current_image,
             width=100
         )
@@ -529,13 +537,50 @@ class ImageViewerWindow:
     
     def bind_keys(self):
         """Bind keyboard shortcuts."""
+        # Navigation shortcuts
         self.window.bind("<Left>", lambda e: self.previous_image())
         self.window.bind("<Right>", lambda e: self.next_image())
         self.window.bind("<Escape>", lambda e: self.close())
         self.window.bind("<Return>", lambda e: self.close())
         
+        # Action shortcuts
+        self.window.bind("<KeyPress-d>", lambda e: self.keyboard_delete_image())
+        self.window.bind("<KeyPress-D>", lambda e: self.keyboard_delete_image())
+        self.window.bind("<KeyPress-m>", lambda e: self.keyboard_move_image())
+        self.window.bind("<KeyPress-M>", lambda e: self.keyboard_move_image())
+        self.window.bind("<KeyPress-n>", lambda e: self.keyboard_next_group())
+        self.window.bind("<KeyPress-N>", lambda e: self.keyboard_next_group())
+        self.window.bind("<KeyPress-p>", lambda e: self.keyboard_previous_group())
+        self.window.bind("<KeyPress-P>", lambda e: self.keyboard_previous_group())
+        
         # Make sure window has focus for key events
         self.window.focus_set()
+        
+        logging.debug("Image viewer keyboard shortcuts: ←/→=Nav, D=Delete, M=Move, N/P=Groups, Esc=Close")
+    
+    def keyboard_delete_image(self):
+        """Handle keyboard shortcut for deleting current image."""
+        if hasattr(self, 'delete_btn') and self.delete_btn.cget('state') == 'normal':
+            logging.info("Image viewer keyboard shortcut: Delete (D) pressed")
+            self.delete_current_image()
+    
+    def keyboard_move_image(self):
+        """Handle keyboard shortcut for moving current image."""
+        if hasattr(self, 'move_btn') and self.move_btn.cget('state') == 'normal':
+            logging.info("Image viewer keyboard shortcut: Move (M) pressed")
+            self.move_current_image()
+    
+    def keyboard_next_group(self):
+        """Handle keyboard shortcut for next group."""
+        if hasattr(self, 'next_group_btn') and self.next_group_btn.cget('state') == 'normal':
+            logging.info("Image viewer keyboard shortcut: Next Group (N) pressed")
+            self.next_group()
+    
+    def keyboard_previous_group(self):
+        """Handle keyboard shortcut for previous group.""" 
+        if hasattr(self, 'prev_group_btn') and self.prev_group_btn.cget('state') == 'normal':
+            logging.info("Image viewer keyboard shortcut: Previous Group (P) pressed")
+            self.previous_group()
     
     def load_current_image(self):
         """Load and display the current image."""
@@ -653,9 +698,9 @@ class ImageViewerWindow:
         """Update move button text based on pre-selected directory."""
         if hasattr(self, 'move_btn') and self.main_app:
             if self.main_app.move_to_directory and self.main_app.move_to_directory.exists():
-                self.move_btn.configure(text="Move to Pre-selected")
+                self.move_btn.configure(text="Move to Pre-selected (M)")
             else:
-                self.move_btn.configure(text="Move Image")
+                self.move_btn.configure(text="Move Image (M)")
     
     def previous_group(self):
         """Navigate to previous group."""

@@ -44,6 +44,7 @@ A cross-platform, intuitive, python-based desktop application with GUI for ident
 - customtkinter >= 5.2.0
 - pillow >= 10.0.0  
 - pandas >= 2.0.0
+- pillow-heif >= 0.10.0 (for HEIC/HEIF support)
 - uv (for dependency management, optional but recommended)
 - (Optional) photochomper for generating CSV files
 -  Windows, macOS, or Linux OS
