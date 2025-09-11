@@ -93,17 +93,28 @@ class DataManager:
         for group_id in self.group_ids:
             group_df = self.df[self.df['GroupID'] == group_id].copy()
             
+            # Check if group has any masters
+            master_count = group_df['IsMaster'].sum()
+            if master_count == 0:
+                logger.info(f"Group {group_id} has no master, auto-assigning based on shortest path")
+                # Find image with shortest path (likely the original)
+                shortest_path_idx = group_df['Path'].str.len().idxmin()
+                group_df.loc[shortest_path_idx, 'IsMaster'] = True
+                # Update the main dataframe too
+                self.df.loc[shortest_path_idx, 'IsMaster'] = True
+                logger.debug(f"Assigned master to {group_df.loc[shortest_path_idx, 'File']} in group {group_id}")
+                master_count = 1
+            
             # Sort by Master status (masters first), then by file name
             group_df = group_df.sort_values(['IsMaster', 'File'], ascending=[False, True])
             
             self.groups[group_id] = group_df
             
             # Log group info
-            master_count = group_df['IsMaster'].sum()
             total_count = len(group_df)
             existing_count = group_df['FileExists'].sum()
             
-            logging.debug(f"Group {group_id}: {total_count} images, {master_count} masters, {existing_count} exist")
+            logger.debug(f"Group {group_id}: {total_count} images, {master_count} masters, {existing_count} exist")
     
     def get_group(self, group_id: str) -> Optional[pd.DataFrame]:
         """Get photos for a specific group."""

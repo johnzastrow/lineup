@@ -61,6 +61,8 @@ class LineupApp:
         self.move_to_directory = None
         self.active_image_viewers = []  # Track open image viewers
         self.group_buttons = {}  # Track group buttons for visual feedback
+        self.auto_select_enabled = True  # Auto-select non-masters by default
+        self.hide_single_groups = True  # Hide groups with 1 or fewer images
         
         self.setup_ui()
         logger.info("Lineup application initialized successfully")
@@ -140,6 +142,24 @@ class LineupApp:
             width=60
         )
         self.moveto_clear_btn.pack(side="left", padx=(0, 5))
+        
+        # Hide single groups toggle
+        self.hide_single_switch = ctk.CTkSwitch(
+            self.toolbar,
+            text="Hide Single Groups",
+            command=self.toggle_hide_single_groups
+        )
+        self.hide_single_switch.pack(side="right", padx=5)
+        self.hide_single_switch.select()  # Default to enabled
+        
+        # Auto-select toggle
+        self.auto_select_switch = ctk.CTkSwitch(
+            self.toolbar,
+            text="Auto-select Duplicates",
+            command=self.toggle_auto_select
+        )
+        self.auto_select_switch.pack(side="right", padx=5)
+        self.auto_select_switch.select()  # Default to enabled
         
         # Dark mode toggle
         self.dark_mode_switch = ctk.CTkSwitch(
@@ -256,10 +276,16 @@ class LineupApp:
             widget.destroy()
         
         groups = self.data_manager.get_group_list()
-        logger.debug(f"Creating buttons for {len(groups)} groups")
+        logger.debug(f"Processing {len(groups)} total groups")
         
+        displayed_groups = 0
         for group_id in groups:
             summary = self.data_manager.get_group_summary(group_id)
+            
+            # Skip groups with 1 or fewer images if hiding is enabled
+            if self.hide_single_groups and summary['existing_images'] <= 1:
+                logger.debug(f"Hiding group {group_id} with {summary['existing_images']} image(s)")
+                continue
             
             # Create group button
             btn_text = f"Group {group_id}\n{summary['existing_images']}/{summary['total_images']} images"
@@ -276,6 +302,9 @@ class LineupApp:
             
             # Store button reference
             self.group_buttons[group_id] = group_btn
+            displayed_groups += 1
+        
+        logger.debug(f"Displayed {displayed_groups} groups (hiding single groups: {self.hide_single_groups})")
     
     def update_group_selection_visual(self, selected_group_id: str):
         """Update visual feedback for group selection."""
@@ -430,8 +459,41 @@ class LineupApp:
         for i in range(columns):
             self.image_scroll_frame.grid_columnconfigure(i, weight=1)
         
-        # Reset selection
+        # Auto-select non-master images for easy processing (if enabled)
+        if self.auto_select_enabled:
+            self.auto_select_non_masters()
+        else:
+            self.selected_images.clear()
+        
+        # Update selection UI
+        self.update_selection_ui()
+    
+    def auto_select_non_masters(self):
+        """Automatically select non-master images for easy processing."""
+        logger.debug(f"Auto-selecting non-master images in group {self.current_group}")
+        
         self.selected_images.clear()
+        selected_count = 0
+        
+        for image_widget in self.image_widgets:
+            if not image_widget.is_master and image_widget.file_exists:
+                image_widget.set_selected(True)
+                self.selected_images.add(image_widget)
+                selected_count += 1
+        
+        if selected_count > 0:
+            logger.info(f"Auto-selected {selected_count} non-master images in group {self.current_group}")
+            self.show_operation_status(f"Auto-selected {selected_count} non-master image(s)", "blue")
+            
+            # Check if auto-selection selected all images except master (warning condition)
+            total_existing = sum(1 for w in self.image_widgets if w.file_exists)
+            if selected_count == total_existing - 1 and total_existing > 1:
+                logger.warning(f"Auto-selected all non-master images in group {self.current_group} - only master will remain")
+                self.show_operation_status("⚠️ Auto-selected all duplicates - only master will remain", "orange")
+        else:
+            logger.debug(f"No non-master images to auto-select in group {self.current_group}")
+        
+        # Update button states after auto-selection
         self.update_selection_ui()
     
     def open_image_viewer(self, image_index: int):
@@ -457,8 +519,22 @@ class LineupApp:
         """Handle image selection changes."""
         if image_widget.is_selected:
             self.selected_images.add(image_widget)
+            
+            # If master image is selected, unselect all other images in the group
+            if image_widget.is_master:
+                logger.info(f"Master image selected, unselecting all other images in group {self.current_group}")
+                for widget in self.image_widgets:
+                    if widget != image_widget and widget.is_selected:
+                        widget.set_selected(False)
+                        self.selected_images.discard(widget)
+                self.show_operation_status("Master selected - cleared other selections", "orange")
         else:
             self.selected_images.discard(image_widget)
+        
+        # Check if all images in the group are selected (warning condition)
+        if len(self.selected_images) == len(self.image_widgets) and len(self.image_widgets) > 1:
+            logger.warning(f"All images selected in group {self.current_group} - this will leave no images in the group")
+            self.show_operation_status("⚠️ WARNING: All images selected - group will be empty!", "red")
         
         self.update_selection_ui()
     
@@ -471,7 +547,13 @@ class LineupApp:
             self.delete_btn.configure(state="disabled")
             self.move_btn.configure(state="disabled")
         else:
-            self.selection_label.configure(text=f"{count} image(s) selected")
+            # Check if all selected images are non-masters
+            non_master_count = sum(1 for widget in self.selected_images if not widget.is_master)
+            if non_master_count == count:
+                self.selection_label.configure(text=f"{count} duplicate(s) selected")
+            else:
+                self.selection_label.configure(text=f"{count} image(s) selected")
+            
             self.delete_btn.configure(state="normal")
             self.move_btn.configure(state="normal")
             
@@ -657,8 +739,110 @@ class LineupApp:
             self.data_manager.validate_file_paths()
             # Repopulate group list (counts may have changed)
             self.populate_group_list()
-            # Re-select current group to refresh display
-            self.select_group(self.current_group)
+            
+            # Check if we should move to next group
+            self.move_to_next_group_after_action()
+            
+            # If still on same group, refresh display
+            if self.current_group and self.current_group in self.group_buttons:
+                self.select_group(self.current_group)
+    
+    def get_next_available_group(self, current_group: str) -> str:
+        """Get the next available group for navigation."""
+        available_groups = list(self.group_buttons.keys())
+        if not available_groups:
+            return None
+            
+        try:
+            current_index = available_groups.index(current_group)
+            # Try next group first
+            if current_index + 1 < len(available_groups):
+                return available_groups[current_index + 1]
+            # If at end, try first group
+            elif len(available_groups) > 1:
+                return available_groups[0]
+        except ValueError:
+            # Current group not in available groups, return first available
+            pass
+        
+        # Return first available group or None
+        return available_groups[0] if available_groups else None
+    
+    def move_to_next_group_after_action(self):
+        """Move to next available group after performing an action."""
+        if not self.current_group:
+            return
+            
+        # Check if current group still has multiple images
+        summary = self.data_manager.get_group_summary(self.current_group)
+        if summary['existing_images'] > 1:
+            logger.debug(f"Group {self.current_group} still has {summary['existing_images']} images, staying")
+            return
+        
+        # Current group now has 1 or fewer images, move to next
+        next_group = self.get_next_available_group(self.current_group)
+        if next_group and next_group != self.current_group:
+            logger.info(f"Moving from group {self.current_group} to {next_group} after action")
+            self.select_group(next_group)
+            self.show_operation_status(f"Moved to next group: {next_group}", "blue")
+        elif self.hide_single_groups:
+            # Refresh the group list to hide the now-single group
+            self.populate_group_list()
+            available_groups = list(self.group_buttons.keys())
+            if available_groups:
+                self.select_group(available_groups[0])
+                self.show_operation_status(f"Moved to group {available_groups[0]} (previous group hidden)", "blue")
+            else:
+                self.show_operation_status("All groups processed!", "green")
+    
+    def toggle_auto_select(self):
+        """Toggle auto-selection of non-master images."""
+        self.auto_select_enabled = self.auto_select_switch.get()
+        logger.info(f"Auto-select duplicates {'enabled' if self.auto_select_enabled else 'disabled'}")
+        
+        # If currently viewing a group, apply the new setting
+        if self.current_group and self.image_widgets:
+            if self.auto_select_enabled:
+                self.auto_select_non_masters()
+            else:
+                # Clear all selections
+                for widget in self.selected_images.copy():
+                    widget.set_selected(False)
+                self.selected_images.clear()
+                self.show_operation_status("Auto-selection disabled", "gray")
+            
+            self.update_selection_ui()
+    
+    def toggle_hide_single_groups(self):
+        """Toggle hiding of groups with 1 or fewer images."""
+        self.hide_single_groups = self.hide_single_switch.get()
+        logger.info(f"Hide single groups {'enabled' if self.hide_single_groups else 'disabled'}")
+        
+        # Repopulate group list with new filter
+        if hasattr(self, 'group_list_frame'):
+            current_group = self.current_group
+            self.populate_group_list()
+            
+            # If current group is now hidden, select the first available group
+            if current_group and current_group not in self.group_buttons:
+                available_groups = list(self.group_buttons.keys())
+                if available_groups:
+                    self.select_group(available_groups[0])
+                    self.show_operation_status(f"Switched to group {available_groups[0]} (previous group hidden)", "blue")
+                else:
+                    # No groups to display
+                    self.current_group = None
+                    for widget in self.display_frame.winfo_children():
+                        widget.destroy()
+                    no_groups_label = ctk.CTkLabel(
+                        self.display_frame,
+                        text="No groups to display with current filters",
+                        font=ctk.CTkFont(size=14)
+                    )
+                    no_groups_label.pack(expand=True)
+            elif current_group:
+                # Re-select current group to update visual feedback
+                self.update_group_selection_visual(current_group)
     
     def toggle_dark_mode(self):
         """Toggle between light and dark mode."""
