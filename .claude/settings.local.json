@@ -3,7 +3,9 @@
     "allow": [
       "Bash(uv sync:*)",
       "Bash(uv run:*)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(python test:*)",
+      "Bash(python3:*)"
     ],
     "deny": [],
     "ask": []

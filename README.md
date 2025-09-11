@@ -19,7 +19,7 @@ A cross-platform, intuitive, python-based desktop application with GUI for ident
 - **Group Information Display**: Shows current position, match reasons, and statistics
 
 ### **Efficient Batch Operations**
-- **Visual Selection**: Click to select images (red/orange borders for feedback)
+- **Visual Selection**: Click to select images (red borders for feedback)
 - **Global Move Directory**: Set once, use everywhere with visual confirmation
 - **Smart File Operations**: Automatic conflict resolution with naming
 - **Operation Status**: Real-time feedback with color-coded messages
@@ -28,7 +28,7 @@ A cross-platform, intuitive, python-based desktop application with GUI for ident
 ### **Professional Interface**
 - **Dark Mode Support**: System-aware theme switching
 - **Responsive Layout**: Adapts to different screen sizes and window configurations
-- **Visual Feedback**: Color-coded borders (green=unselected, blue=selected group, gold=master)
+- **Visual Feedback**: Color-coded borders (green=unselected, red=selected, blue=selected group)
 - **Status Indicators**: Clear operation progress and results
 - **Text Wrapping**: Full filename display without truncation
 
@@ -97,10 +97,10 @@ uv run main.py
 - **Batch workflow**: Set a "Move To" directory once, then quickly process multiple groups
 - **Keyboard navigation**: Use ← → keys in the image viewer for efficient review
 - **Visual indicators**: 
-  - Green borders = regular images
-  - Gold borders = master images 
+  - Green borders = unselected images
+  - Red borders = selected images
   - Blue group buttons = currently selected
-  - Red/orange borders = selected for action
+  - ★ MASTER text = recommended keeper images
 - **Check logs**: View detailed activity in `logs/lineup_info.log`
 
 ## CSV Format

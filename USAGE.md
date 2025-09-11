@@ -39,10 +39,9 @@ GroupID,Master,File,Path,MatchReasons
 - **Text Format**: "Group X - Y/Z images" (Y=existing, Z=total)
 
 #### **Image Thumbnails**
-- **Green Border**: Regular unselected image
-- **Gold Border**: Master image (★ MASTER indicator)
-- **Red Border**: Selected non-master image
-- **Orange Border**: Selected master image
+- **Green Border**: Unselected image
+- **Red Border**: Selected image
+- **★ MASTER**: Text indicator for recommended keeper image
 
 #### **Status Indicators**
 - **★ MASTER**: Recommended image to keep
@@ -90,7 +89,7 @@ GroupID,Master,File,Path,MatchReasons
 
 ### Moving Images
 #### From Main Screen:
-1. Select images (click for red/orange borders)
+1. Select images (click for red borders)
 2. Click "Move Selected" or "Move to Pre-selected"
 3. If no directory set, you'll be prompted to choose one
 4. Files moved with automatic conflict resolution

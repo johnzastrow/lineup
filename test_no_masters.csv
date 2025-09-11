@@ -1,0 +1,7 @@
+GroupID,Master,File,Path,MatchReasons
+1,False,IMG_001.jpg,/very/long/path/to/somewhere/deep/IMG_001.jpg,Exact duplicate
+1,False,IMG_copy.jpg,/short/IMG_copy.jpg,Exact duplicate
+1,False,IMG_edit.jpg,/path/to/edited/IMG_edit.jpg,95% similarity
+2,False,vacation.jpg,/really/really/long/nested/folder/structure/vacation.jpg,Near duplicate
+2,False,vacation_small.jpg,/quick/vacation_small.jpg,Resolution difference
+3,False,portrait.jpg,/path/portrait.jpg,Face match
