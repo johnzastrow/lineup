@@ -1,15 +1,15 @@
 # Lineup - Photo Duplicate Manager
 
-A powerful cross-platform desktop application for managing and organizing photo collections by identifying and handling duplicate or similar images. Built with modern Python GUI technology for an intuitive and efficient workflow.
+A cross-platform, intuitive, python-based desktop application with GUI for identifying and handling duplicate or similar images based on output from preprocessing a directory using [photochomper](https://github.com/johnzastrow/photochomper).
+
 
 ## ✨ Key Features
 
 ### **Smart Image Management**
-- **CSV Data Import**: Load photo groupings from CSV files with comprehensive validation
+- **CSV Data Import**: Load photo groupings from CSV files from [photochomper](https://github.com/johnzastrow/photochomper) 
 - **Dynamic Thumbnails**: Adaptive thumbnail sizing that maximizes screen usage (200-400px)
 - **Visual Group Navigation**: Color-coded group selection with live image counts
-- **Master Image Highlighting**: Clear ★ MASTER indicators
-- **Missing File Detection**: Graceful handling with clear ❌ indicators
+- **Master Image Highlighting**: Clear ★ MASTER (recommended image to keep) indicators 
 
 ### **Advanced Viewing & Navigation**
 - **Full-Size Image Viewer**: Double-click thumbnails for detailed viewing
@@ -38,44 +38,55 @@ A powerful cross-platform desktop application for managing and organizing photo 
 - **Performance Tracking**: Monitor load times and operation efficiency
 - **Audit Trail**: Complete record of user actions and file operations
 
-## Installation
+## Requirements
 
-1. Clone the repository:
+- Python 3.13+ (recommended)
+- customtkinter >= 5.2.0
+- pillow >= 10.0.0  
+- pandas >= 2.0.0
+- uv (for dependency management, optional but recommended)
+- (Optional) photochomper for generating CSV files
+-  Windows, macOS, or Linux OS
+  
+  
+## Installation and Quick Start
+
+This app was built and tested using Python 3.13 and using the `uv` tool from Astral for dependency management.
+
+**1. Clone the repository:**
 ```bash
 git clone <repository-url>
 cd lineup
 ```
 
-2. Install dependencies using uv:
+**2. Install dependencies using uv:**
 ```bash
 uv sync
 ```
 
-## 🚀 Quick Start
-
-1. **Launch the application**:
+**3. Launch the application:**
 ```bash
 uv run main.py
 ```
+**Once in the UI, follow these steps:**
 
-2. **Load your data**: Click "Load CSV File" and select your photo groupings file
+1. **Load your data**: Click "Load CSV File" and select your photo groupings file
 
-3. **Set up move directory** (optional): Click "Browse..." next to "Move To:" to pre-select a destination folder
+2. **Set up "Move to" directory** (optional): Click "Browse..." next to "Move To:" to pre-select a destination folder
 
-4. **Navigate groups**: Click on any group in the left panel - selected groups show in blue
+3. **Navigate groups**: Click on any group in the left panel - selected groups show in blue
 
-5. **Review images**: 
+4. **Review images**: 
    - Thumbnails automatically size to use available screen space
-   - Master images show with ★ MASTER indicators
+   - Master images show with ★ MASTER 
    - Missing files display with ❌ indicators
 
-6. **Select and manage duplicates**:
-   - Single-click images to select (red borders)
+5. **Select and manage duplicates**:
+   - Single-click images to select (red/orange borders)
    - Use "Delete Selected" or "Move Selected" buttons
    - Status messages show operation results
-   - Screen refreshes automatically
 
-7. **Use the image viewer**:
+6. **Use the image viewer**:
    - Double-click any thumbnail for full-size viewing
    - Navigate with arrow keys or Previous/Next buttons
    - Jump between groups without closing the viewer
@@ -94,7 +105,7 @@ uv run main.py
 
 ## CSV Format
 
-Your CSV file should contain these columns:
+Your CSV file should contain these columns and you can generate it using the `--search` function in [photochomper](https://github.com/johnzastrow/photochomper) or create it manually:
 - `GroupID`: Identifier grouping similar photos together
 - `Master`: Boolean indicating the recommended image to keep
 - `File`: Image filename
@@ -105,17 +116,12 @@ Example CSV structure:
 ```csv
 GroupID,Master,File,Path,MatchReasons
 1,True,IMG_001.jpg,/path/to/IMG_001.jpg,Exact duplicate
-1,False,IMG_001_copy.jpg,/path/to/IMG_001_copy.jpg,Exact duplicate
+1,False,IMG_001_copy.jpg,/path/to/IMG_001_copy.jpg,Visually similar, Same size, Same Date
 ```
 
 A sample CSV file (`sample_data.csv`) is included for testing.
 
-## Requirements
 
-- Python 3.13+
-- customtkinter >= 5.2.0
-- pillow >= 10.0.0  
-- pandas >= 2.0.0
 
 ## 🛠️ Development
 
