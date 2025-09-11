@@ -1,17 +1,42 @@
 # Lineup - Photo Duplicate Manager
 
-A cross-platform desktop application for managing and organizing photo collections by identifying and handling duplicate or similar images.
+A powerful cross-platform desktop application for managing and organizing photo collections by identifying and handling duplicate or similar images. Built with modern Python GUI technology for an intuitive and efficient workflow.
 
-## Features
+## ✨ Key Features
 
-- **CSV Data Import**: Load photo groupings from CSV files with GroupID, Master, File, Path, and MatchReasons columns
-- **Visual Photo Review**: View thumbnails of grouped similar photos with master image highlighting
-- **Batch Operations**: Select multiple images for deletion or moving to specified directories
-- **Master Image Indication**: Clear visual indicators for recommended images to keep (★ MASTER)
-- **Missing File Handling**: Graceful handling of missing or inaccessible image files
-- **Dark Mode Support**: Toggle between light and dark themes
-- **Responsive Layout**: Adaptive grid layout that works on different screen sizes
-- **Comprehensive Logging**: Track all user actions and errors for debugging
+### **Smart Image Management**
+- **CSV Data Import**: Load photo groupings from CSV files with comprehensive validation
+- **Dynamic Thumbnails**: Adaptive thumbnail sizing that maximizes screen usage (200-400px)
+- **Visual Group Navigation**: Color-coded group selection with live image counts
+- **Master Image Highlighting**: Clear ★ MASTER indicators with gold borders
+- **Missing File Detection**: Graceful handling with clear ❌ indicators
+
+### **Advanced Viewing & Navigation**
+- **Full-Size Image Viewer**: Double-click thumbnails for detailed viewing
+- **Cross-Group Navigation**: Previous/Next group buttons in image viewer
+- **Keyboard Shortcuts**: Left/Right arrows for image navigation, Esc to close
+- **Smart Image Scaling**: Maintains aspect ratio while fitting window size
+- **Group Information Display**: Shows current position, match reasons, and statistics
+
+### **Efficient Batch Operations**
+- **Visual Selection**: Click to select images (red/orange borders for feedback)
+- **Global Move Directory**: Set once, use everywhere with visual confirmation
+- **Smart File Operations**: Automatic conflict resolution with naming
+- **Operation Status**: Real-time feedback with color-coded messages
+- **Auto-Refresh**: Instant UI updates after move/delete operations
+
+### **Professional Interface**
+- **Dark Mode Support**: System-aware theme switching
+- **Responsive Layout**: Adapts to different screen sizes and window configurations
+- **Visual Feedback**: Color-coded borders (green=unselected, blue=selected group, gold=master)
+- **Status Indicators**: Clear operation progress and results
+- **Text Wrapping**: Full filename display without truncation
+
+### **Comprehensive Logging**
+- **Multi-Level Logging**: Debug, Info, and Error levels with separate files
+- **Structured Format**: Includes timestamps, function names, and line numbers
+- **Performance Tracking**: Monitor load times and operation efficiency
+- **Audit Trail**: Complete record of user actions and file operations
 
 ## Installation
 
@@ -26,17 +51,46 @@ cd lineup
 uv sync
 ```
 
-## Usage
+## 🚀 Quick Start
 
-1. Run the application:
+1. **Launch the application**:
 ```bash
 uv run main.py
 ```
 
-2. Click "Load CSV File" to import your photo data
-3. Select a group from the left panel to view images
-4. Click on images to select them (red border indicates selection)
-5. Use "Delete Selected" or "Move Selected" to manage duplicates
+2. **Load your data**: Click "Load CSV File" and select your photo groupings file
+
+3. **Set up move directory** (optional): Click "Browse..." next to "Move To:" to pre-select a destination folder
+
+4. **Navigate groups**: Click on any group in the left panel - selected groups show in blue
+
+5. **Review images**: 
+   - Thumbnails automatically size to use available screen space
+   - Master images show with ★ MASTER and gold borders
+   - Missing files display with ❌ indicators
+
+6. **Select and manage duplicates**:
+   - Single-click images to select (red/orange borders)
+   - Use "Delete Selected" or "Move Selected" buttons
+   - Status messages show operation results
+   - Screen refreshes automatically
+
+7. **Use the image viewer**:
+   - Double-click any thumbnail for full-size viewing
+   - Navigate with arrow keys or Previous/Next buttons
+   - Jump between groups without closing the viewer
+   - Delete or move images directly from the viewer
+
+## 🎯 Pro Tips
+
+- **Batch workflow**: Set a "Move To" directory once, then quickly process multiple groups
+- **Keyboard navigation**: Use ← → keys in the image viewer for efficient review
+- **Visual indicators**: 
+  - Green borders = regular images
+  - Gold borders = master images 
+  - Blue group buttons = currently selected
+  - Red/orange borders = selected for action
+- **Check logs**: View detailed activity in `logs/lineup_info.log`
 
 ## CSV Format
 
@@ -63,17 +117,58 @@ A sample CSV file (`sample_data.csv`) is included for testing.
 - pillow >= 10.0.0  
 - pandas >= 2.0.0
 
-## Development
+## 🛠️ Development
 
-The application is built with:
-- **customtkinter**: Modern GUI framework
-- **Pillow**: Image processing and thumbnail generation
-- **pandas**: CSV data handling and manipulation
+### **Architecture**
 
-Key components:
-- `main.py`: Main application window and UI logic
-- `data_manager.py`: CSV loading and data processing
-- `image_manager.py`: Image loading, thumbnails, and caching
+The application follows a clean, modular architecture:
+
+- **`main.py`**: Main application with enhanced UI, logging, and global state management
+- **`data_manager.py`**: CSV processing, validation, and group management
+- **`image_manager.py`**: Image loading, caching, thumbnails, and full-size viewer
+
+### **Technology Stack**
+
+- **GUI Framework**: customtkinter (modern, themeable UI components)
+- **Image Processing**: Pillow (thumbnail generation, format support)
+- **Data Handling**: pandas (CSV parsing, data manipulation)
+- **Caching**: File-based thumbnail cache with metadata
+- **Logging**: Multi-level structured logging system
+
+### **Key Features Implementation**
+
+- **Dynamic Layout**: Responsive grid system with optimal thumbnail sizing
+- **State Management**: Global directory sharing between main app and image viewer
+- **Visual Feedback**: Real-time UI updates with color-coded status indicators
+- **Performance**: Asynchronous thumbnail loading with progress callbacks
+- **Error Handling**: Comprehensive exception handling with user-friendly messages
+
+### **File Structure**
+```
+lineup/
+├── main.py              # Main application and UI logic
+├── data_manager.py      # CSV data processing
+├── image_manager.py     # Image handling and viewer
+├── logs/               # Application logs
+│   ├── lineup_debug.log # Detailed debug information
+│   └── lineup_info.log  # User actions and events
+├── .image_cache/       # Thumbnail cache
+├── sample_data.csv     # Sample data for testing
+└── CLAUDE.md          # Development guidelines
+```
+
+### **Development Commands**
+
+```bash
+# Run the application
+uv run main.py
+
+# Install/update dependencies  
+uv sync
+
+# View logs
+tail -f logs/lineup_info.log
+```
 
 ## License
 
