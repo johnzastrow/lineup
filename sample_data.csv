@@ -1,0 +1,14 @@
+GroupID,Master,File,Path,MatchReasons
+1,True,IMG_001.jpg,/path/to/IMG_001.jpg,Exact duplicate
+1,False,IMG_001_copy.jpg,/path/to/IMG_001_copy.jpg,Exact duplicate
+1,False,IMG_001_edit.jpg,/path/to/IMG_001_edit.jpg,95% similarity
+2,True,DSC_0234.jpg,/path/to/DSC_0234.jpg,Near duplicate
+2,False,DSC_0234_resized.jpg,/path/to/DSC_0234_resized.jpg,Resolution difference
+2,False,DSC_0234_crop.jpg,/path/to/DSC_0234_crop.jpg,Cropped version
+3,True,vacation_beach.png,/path/to/vacation_beach.png,Visual similarity
+3,False,beach_photo.png,/path/to/beach_photo.png,Same scene
+3,False,beach_sunset.png,/path/to/beach_sunset.png,Similar composition
+4,False,portrait_1.jpg,/path/to/portrait_1.jpg,Face match
+4,True,portrait_best.jpg,/path/to/portrait_best.jpg,Face match
+5,True,document_scan.pdf,/path/to/document_scan.pdf,Content similarity
+5,False,document_photo.jpg,/path/to/document_photo.jpg,Content similarity
