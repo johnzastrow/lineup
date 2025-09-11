@@ -8,7 +8,7 @@ A powerful cross-platform desktop application for managing and organizing photo 
 - **CSV Data Import**: Load photo groupings from CSV files with comprehensive validation
 - **Dynamic Thumbnails**: Adaptive thumbnail sizing that maximizes screen usage (200-400px)
 - **Visual Group Navigation**: Color-coded group selection with live image counts
-- **Master Image Highlighting**: Clear ★ MASTER indicators with gold borders
+- **Master Image Highlighting**: Clear ★ MASTER indicators
 - **Missing File Detection**: Graceful handling with clear ❌ indicators
 
 ### **Advanced Viewing & Navigation**
@@ -19,7 +19,7 @@ A powerful cross-platform desktop application for managing and organizing photo 
 - **Group Information Display**: Shows current position, match reasons, and statistics
 
 ### **Efficient Batch Operations**
-- **Visual Selection**: Click to select images (red/orange borders for feedback)
+- **Visual Selection**: Click to select images (red borders for feedback)
 - **Global Move Directory**: Set once, use everywhere with visual confirmation
 - **Smart File Operations**: Automatic conflict resolution with naming
 - **Operation Status**: Real-time feedback with color-coded messages
@@ -28,7 +28,7 @@ A powerful cross-platform desktop application for managing and organizing photo 
 ### **Professional Interface**
 - **Dark Mode Support**: System-aware theme switching
 - **Responsive Layout**: Adapts to different screen sizes and window configurations
-- **Visual Feedback**: Color-coded borders (green=unselected, blue=selected group, gold=master)
+- **Visual Feedback**: Color-coded borders (green=unselected, red=selected, blue=selected group)
 - **Status Indicators**: Clear operation progress and results
 - **Text Wrapping**: Full filename display without truncation
 
@@ -66,11 +66,11 @@ uv run main.py
 
 5. **Review images**: 
    - Thumbnails automatically size to use available screen space
-   - Master images show with ★ MASTER and gold borders
+   - Master images show with ★ MASTER indicators
    - Missing files display with ❌ indicators
 
 6. **Select and manage duplicates**:
-   - Single-click images to select (red/orange borders)
+   - Single-click images to select (red borders)
    - Use "Delete Selected" or "Move Selected" buttons
    - Status messages show operation results
    - Screen refreshes automatically
@@ -86,10 +86,10 @@ uv run main.py
 - **Batch workflow**: Set a "Move To" directory once, then quickly process multiple groups
 - **Keyboard navigation**: Use ← → keys in the image viewer for efficient review
 - **Visual indicators**: 
-  - Green borders = regular images
-  - Gold borders = master images 
+  - Green borders = unselected images
+  - Red borders = selected images
   - Blue group buttons = currently selected
-  - Red/orange borders = selected for action
+  - ★ MASTER text = recommended keeper images
 - **Check logs**: View detailed activity in `logs/lineup_info.log`
 
 ## CSV Format

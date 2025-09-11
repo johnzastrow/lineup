@@ -331,12 +331,11 @@ class ImageWidget(ctk.CTkFrame):
     def update_appearance(self):
         """Update widget appearance based on state."""
         if self.is_selected:
-            border_color = "red" if not self.is_master else "orange"
+            # Selected images are always red
+            border_color = "red"
             border_width = 3
-        elif self.is_master:
-            border_color = "gold"
-            border_width = 2
         else:
+            # Non-selected images are always green (no special master styling)
             border_color = "green"
             border_width = 1
         

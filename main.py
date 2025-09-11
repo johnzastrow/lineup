@@ -773,27 +773,24 @@ class LineupApp:
         if not self.current_group:
             return
             
-        # Check if current group still has multiple images
-        summary = self.data_manager.get_group_summary(self.current_group)
-        if summary['existing_images'] > 1:
-            logger.debug(f"Group {self.current_group} still has {summary['existing_images']} images, staying")
-            return
-        
-        # Current group now has 1 or fewer images, move to next
+        # Always move to next group after an action for efficient workflow
         next_group = self.get_next_available_group(self.current_group)
         if next_group and next_group != self.current_group:
-            logger.info(f"Moving from group {self.current_group} to {next_group} after action")
+            logger.info(f"Auto-navigating from group {self.current_group} to {next_group} after action")
             self.select_group(next_group)
-            self.show_operation_status(f"Moved to next group: {next_group}", "blue")
-        elif self.hide_single_groups:
-            # Refresh the group list to hide the now-single group
-            self.populate_group_list()
-            available_groups = list(self.group_buttons.keys())
-            if available_groups:
-                self.select_group(available_groups[0])
-                self.show_operation_status(f"Moved to group {available_groups[0]} (previous group hidden)", "blue")
-            else:
-                self.show_operation_status("All groups processed!", "green")
+            self.show_operation_status(f"Advanced to group {next_group}", "blue")
+        else:
+            # Check if current group should be hidden due to single image rule
+            summary = self.data_manager.get_group_summary(self.current_group)
+            if self.hide_single_groups and summary['existing_images'] <= 1:
+                # Refresh the group list to hide the now-single group
+                self.populate_group_list()
+                available_groups = list(self.group_buttons.keys())
+                if available_groups:
+                    self.select_group(available_groups[0])
+                    self.show_operation_status(f"Moved to group {available_groups[0]} (previous group hidden)", "blue")
+                else:
+                    self.show_operation_status("All groups processed!", "green")
     
     def toggle_auto_select(self):
         """Toggle auto-selection of non-master images."""
