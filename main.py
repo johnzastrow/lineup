@@ -6,15 +6,39 @@ from pathlib import Path
 from data_manager import DataManager
 from image_manager import ImageManager, ImageWidget, ImageViewerWindow
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('lineup.log'),
-        logging.StreamHandler()
-    ]
-)
+# Configure enhanced logging
+def setup_logging():
+    """Setup comprehensive logging configuration."""
+    # Create logs directory if it doesn't exist
+    log_dir = Path("logs")
+    log_dir.mkdir(exist_ok=True)
+    
+    # Configure root logger
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s',
+        handlers=[
+            logging.FileHandler(log_dir / 'lineup_debug.log'),
+            logging.FileHandler(log_dir / 'lineup_info.log', mode='w'),
+            logging.StreamHandler()
+        ]
+    )
+    
+    # Set different levels for different handlers
+    handlers = logging.getLogger().handlers
+    if len(handlers) >= 3:
+        handlers[0].setLevel(logging.DEBUG)    # Debug log file
+        handlers[1].setLevel(logging.INFO)     # Info log file  
+        handlers[2].setLevel(logging.WARNING)  # Console (warnings and errors only)
+    
+    # Create application logger
+    app_logger = logging.getLogger('lineup')
+    app_logger.setLevel(logging.DEBUG)
+    
+    return app_logger
+
+# Setup logging
+logger = setup_logging()
 
 class LineupApp:
     def __init__(self):
@@ -36,9 +60,12 @@ class LineupApp:
         self.image_widgets = []
         self.move_to_directory = None
         self.active_image_viewers = []  # Track open image viewers
+        self.group_buttons = {}  # Track group buttons for visual feedback
         
         self.setup_ui()
-        logging.info("Lineup application initialized")
+        logger.info("Lineup application initialized successfully")
+        logger.debug(f"Window geometry: {self.root.geometry()}")
+        logger.debug(f"Appearance mode: system, Color theme: blue")
     
     def setup_ui(self):
         # Create main frame
@@ -64,6 +91,15 @@ class LineupApp:
             text="No CSV file loaded"
         )
         self.status_label.pack(side="left", padx=20)
+        
+        # Operation status label
+        self.operation_status_label = ctk.CTkLabel(
+            self.toolbar,
+            text="",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="green"
+        )
+        self.operation_status_label.pack(side="left", padx=10)
         
         # Move To directory selector
         self.moveto_frame = ctk.CTkFrame(self.toolbar)
@@ -126,6 +162,7 @@ class LineupApp:
         self.welcome_label.pack(expand=True)
     
     def load_csv_file(self):
+        logger.debug("Opening CSV file selection dialog")
         file_path = filedialog.askopenfilename(
             title="Select CSV File",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
@@ -133,7 +170,8 @@ class LineupApp:
         
         if file_path:
             try:
-                logging.info(f"Loading CSV file: {file_path}")
+                logger.info(f"Loading CSV file: {file_path}")
+                logger.debug(f"File size: {Path(file_path).stat().st_size} bytes")
                 
                 # Load data using DataManager
                 if self.data_manager.load_csv(file_path):
@@ -143,11 +181,15 @@ class LineupApp:
                     status_text = f"Loaded: {Path(file_path).name} ({summary['total_groups']} groups, {summary['total_images']} images)"
                     self.status_label.configure(text=status_text)
                     
+                    logger.info(f"CSV loaded successfully: {summary['total_groups']} groups, {summary['total_images']} images, {summary['missing_images']} missing")
+                    logger.debug(f"Summary: {summary}")
+                    
                     # Update UI
                     self.setup_content_ui()
                     
                     # Show warning if there are missing files
                     if summary['missing_images'] > 0:
+                        logger.warning(f"Found {summary['missing_images']} missing image files")
                         messagebox.showwarning(
                             "Missing Files",
                             f"Warning: {summary['missing_images']} image files could not be found.\n"
@@ -155,19 +197,27 @@ class LineupApp:
                         )
                 
             except Exception as e:
-                logging.error(f"Error loading CSV file: {e}")
+                logger.error(f"Error loading CSV file: {e}", exc_info=True)
                 messagebox.showerror("Error", f"Failed to load CSV file:\n{str(e)}")
+        else:
+            logger.debug("CSV file selection cancelled by user")
     
     def setup_content_ui(self):
         """Setup the main content UI after CSV is loaded."""
+        logger.debug("Setting up content UI after CSV load")
+        
         # Clear all existing content from content_frame
+        widget_count = len(self.content_frame.winfo_children())
         for widget in self.content_frame.winfo_children():
             widget.destroy()
+        logger.debug(f"Cleared {widget_count} existing UI widgets")
         
         # Reset UI state
         self.current_group = None
         self.selected_images.clear()
         self.image_widgets.clear()
+        self.group_buttons.clear()
+        logger.debug("Reset UI state for new CSV data")
         
         # Create group navigation panel
         self.nav_frame = ctk.CTkFrame(self.content_frame)
@@ -198,7 +248,15 @@ class LineupApp:
     
     def populate_group_list(self):
         """Populate the group list with buttons."""
+        logger.debug("Populating group list")
+        
+        # Clear existing buttons
+        self.group_buttons.clear()
+        for widget in self.group_list_frame.winfo_children():
+            widget.destroy()
+        
         groups = self.data_manager.get_group_list()
+        logger.debug(f"Creating buttons for {len(groups)} groups")
         
         for group_id in groups:
             summary = self.data_manager.get_group_summary(group_id)
@@ -210,14 +268,45 @@ class LineupApp:
                 self.group_list_frame,
                 text=btn_text,
                 command=lambda gid=group_id: self.select_group(gid),
-                height=50
+                height=50,
+                fg_color="gray25",  # Default unselected color
+                hover_color="gray35"
             )
             group_btn.pack(fill="x", pady=2)
+            
+            # Store button reference
+            self.group_buttons[group_id] = group_btn
+    
+    def update_group_selection_visual(self, selected_group_id: str):
+        """Update visual feedback for group selection."""
+        logger.debug(f"Updating group visual feedback for selected group: {selected_group_id}")
+        
+        for group_id, button in self.group_buttons.items():
+            if group_id == selected_group_id:
+                # Highlight selected group
+                button.configure(
+                    fg_color="#1f538d",  # Blue for selected
+                    hover_color="#14375e"
+                )
+            else:
+                # Reset other groups to default
+                button.configure(
+                    fg_color="gray25",
+                    hover_color="gray35"
+                )
     
     def select_group(self, group_id: str):
         """Select and display a specific group."""
+        logger.info(f"Selecting group: {group_id}")
+        
+        # Update visual feedback for group buttons
+        self.update_group_selection_visual(group_id)
+        
         self.current_group = group_id
-        logging.info(f"Selected group: {group_id}")
+        
+        # Get group info for logging
+        summary = self.data_manager.get_group_summary(group_id)
+        logger.debug(f"Group {group_id} summary: {summary}")
         
         # Clear display area
         for widget in self.display_frame.winfo_children():
@@ -435,8 +524,9 @@ class LineupApp:
                     (f"\n... and {len(failed_files) - 5} more" if len(failed_files) > 5 else "")
                 )
             
-            # Refresh the display
-            self.select_group(self.current_group)
+            # Show operation status and refresh
+            self.show_operation_status(f"Deleted {len(deleted_files)} file(s)", "red")
+            self.refresh_current_group()
     
     def move_selected_images(self):
         """Move selected images to a specified directory."""
@@ -497,14 +587,19 @@ class LineupApp:
                 (f"\n... and {len(failed_files) - 5} more" if len(failed_files) > 5 else "")
             )
         
-        # Refresh the display
-        self.select_group(self.current_group)
+        # Show operation status and refresh
+        self.show_operation_status(f"Moved {len(moved_files)} file(s)", "green")
+        self.refresh_current_group()
     
     def select_move_directory(self):
         """Select directory for moving files."""
+        logger.debug("Opening move directory selection dialog")
         directory = filedialog.askdirectory(title="Select Move To Directory")
         if directory:
             self.move_to_directory = Path(directory)
+            logger.info(f"Move To directory set: {self.move_to_directory}")
+            logger.debug(f"Directory exists: {self.move_to_directory.exists()}")
+            
             # Truncate display text if path is too long
             display_text = str(self.move_to_directory)
             if len(display_text) > 30:
@@ -518,10 +613,12 @@ class LineupApp:
             self.update_selection_ui()
             # Notify any open image viewers
             self.notify_viewers_directory_changed()
-            logging.info(f"Move To directory set: {self.move_to_directory}")
+        else:
+            logger.debug("Move directory selection cancelled by user")
     
     def clear_move_directory(self):
         """Clear the selected move directory."""
+        logger.info("Clearing Move To directory")
         self.move_to_directory = None
         self.moveto_display.configure(
             text="No directory selected",
@@ -531,7 +628,7 @@ class LineupApp:
         self.update_selection_ui()
         # Notify any open image viewers
         self.notify_viewers_directory_changed()
-        logging.info("Move To directory cleared")
+        logger.debug("Move To directory cleared and UI updated")
     
     def notify_viewers_directory_changed(self):
         """Notify all active image viewers that the move directory has changed."""
@@ -543,6 +640,25 @@ class LineupApp:
         for viewer in self.active_image_viewers:
             if hasattr(viewer, 'update_move_button_text'):
                 viewer.update_move_button_text()
+    
+    def show_operation_status(self, message: str, color: str = "green"):
+        """Show operation status message temporarily."""
+        logger.info(f"Operation status: {message}")
+        self.operation_status_label.configure(text=message, text_color=color)
+        
+        # Clear the message after 3 seconds
+        self.root.after(3000, lambda: self.operation_status_label.configure(text=""))
+    
+    def refresh_current_group(self):
+        """Refresh the current group display after file operations."""
+        if self.current_group:
+            logger.debug(f"Refreshing display for group {self.current_group}")
+            # Revalidate file paths in data manager
+            self.data_manager.validate_file_paths()
+            # Repopulate group list (counts may have changed)
+            self.populate_group_list()
+            # Re-select current group to refresh display
+            self.select_group(self.current_group)
     
     def toggle_dark_mode(self):
         """Toggle between light and dark mode."""

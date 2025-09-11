@@ -8,6 +8,9 @@ import threading
 import json
 from hashlib import md5
 
+# Get logger for this module
+logger = logging.getLogger('lineup.image_manager')
+
 
 class ImageManager:
     """Handles image loading, thumbnail generation, and caching."""
@@ -28,7 +31,8 @@ class ImageManager:
         self.thumbnail_size = (150, 150)
         self.preview_size = (400, 400)
         
-        logging.info(f"ImageManager initialized with cache dir: {self.cache_dir}")
+        logger.info(f"ImageManager initialized with cache dir: {self.cache_dir}")
+        logger.debug(f"Thumbnail size: {self.thumbnail_size}, Preview size: {self.preview_size}")
     
     def _load_cache_metadata(self) -> Dict:
         """Load cache metadata from disk."""

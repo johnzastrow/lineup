@@ -3,6 +3,9 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
+# Get logger for this module
+logger = logging.getLogger('lineup.data_manager')
+
 
 class DataManager:
     """Handles CSV data loading, parsing, and group management."""
@@ -16,16 +19,22 @@ class DataManager:
     def load_csv(self, file_path: str) -> bool:
         """Load and parse CSV file with photo data."""
         try:
+            logger.info(f"Starting CSV load from: {file_path}")
+            
             # Read CSV file
             self.df = pd.read_csv(file_path)
-            logging.info(f"Loaded CSV with {len(self.df)} rows")
+            logger.info(f"Loaded CSV with {len(self.df)} rows and {len(self.df.columns)} columns")
+            logger.debug(f"CSV columns: {list(self.df.columns)}")
             
             # Validate required columns
             required_columns = ['GroupID', 'Master', 'File', 'Path', 'MatchReasons']
             missing_columns = [col for col in required_columns if col not in self.df.columns]
             
             if missing_columns:
+                logger.error(f"Missing required columns: {missing_columns}")
                 raise ValueError(f"Missing required columns: {missing_columns}")
+            
+            logger.debug("All required columns found in CSV")
             
             # Clean and process data
             self._process_data()
@@ -33,21 +42,26 @@ class DataManager:
             # Group by GroupID
             self._create_groups()
             
-            logging.info(f"Processed {len(self.groups)} groups with {len(self.missing_files)} missing files")
+            logger.info(f"CSV processing complete: {len(self.groups)} groups, {len(self.missing_files)} missing files")
             return True
             
         except Exception as e:
-            logging.error(f"Error loading CSV: {e}")
+            logger.error(f"Error loading CSV: {e}", exc_info=True)
             raise
     
     def _process_data(self):
         """Clean and validate the loaded data."""
+        logger.debug("Starting data processing and validation")
+        
         # Remove rows with missing critical data
         initial_count = len(self.df)
         self.df = self.df.dropna(subset=['GroupID', 'File', 'Path'])
         
         if len(self.df) < initial_count:
-            logging.warning(f"Removed {initial_count - len(self.df)} rows with missing data")
+            removed_count = initial_count - len(self.df)
+            logger.warning(f"Removed {removed_count} rows with missing critical data")
+        else:
+            logger.debug("No rows removed - all critical data present")
         
         # Convert GroupID to string for consistency
         self.df['GroupID'] = self.df['GroupID'].astype(str)
