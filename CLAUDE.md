@@ -36,37 +36,45 @@ The application is a mature, production-ready GUI application with the following
 
 #### **Data Management**
 - ✅ CSV file loading with comprehensive validation
+- ✅ CSV file reload functionality with state preservation
 - ✅ GroupID-based organization with master image detection
 - ✅ File existence validation and missing file handling
 - ✅ Real-time data refresh after operations
 
 #### **User Interface**  
 - ✅ Modern customtkinter-based GUI with dark mode support
+- ✅ Comprehensive toolbar with Load CSV, Reload, and configuration controls
 - ✅ Dynamic thumbnail sizing (200-400px) based on screen space
 - ✅ Visual group selection with color-coded navigation
 - ✅ Responsive grid layout that adapts to window size
 - ✅ Real-time status messages and operation feedback
+- ✅ Auto-select duplicates and hide single groups toggles
 
 #### **Image Viewing & Navigation**
 - ✅ Full-size image viewer with modal windows
 - ✅ Cross-group navigation (Previous/Next group buttons)
-- ✅ Keyboard shortcuts (←/→ for images, Esc to close)
+- ✅ Keyboard shortcuts (←/→ for images, Esc to close, D=Delete, M=Move, N=Next Group, P=Previous Group)
 - ✅ Smart image scaling maintaining aspect ratios
 - ✅ Double-click thumbnails to open viewer
+- ✅ Auto-advance to next group after operations for efficient workflow
 
 #### **Batch Operations**
 - ✅ Visual selection with color-coded borders
-- ✅ Global "Move To" directory with state sharing
-- ✅ Delete operations with confirmation dialogs
-- ✅ Move operations with conflict resolution
-- ✅ Automatic screen refresh after operations
+- ✅ Global "Move To" directory with state sharing across viewers
+- ✅ Delete operations with confirmation dialogs and batch processing
+- ✅ Move operations with conflict resolution and automatic renaming
+- ✅ Automatic screen refresh and data validation after operations
+- ✅ Smart selection logic (master selection clears others, auto-select non-masters)
 
 #### **Advanced Features**
-- ✅ Comprehensive multi-level logging system
-- ✅ File-based thumbnail caching with metadata
-- ✅ Master image highlighting with ★ indicators
-- ✅ Missing file detection with ❌ indicators
-- ✅ Operation status display with auto-clear timers
+- ✅ Comprehensive multi-level logging system with file rotation
+- ✅ File-based thumbnail caching with metadata and optimal sizing
+- ✅ Master image highlighting with ★ indicators and protection logic
+- ✅ Missing file detection with ❌ indicators and graceful handling
+- ✅ Operation status display with auto-clear timers and color coding
+- ✅ CSV reload with intelligent state restoration and error handling
+- ✅ Image viewer state synchronization across multiple windows
+- ✅ Filter controls for hiding single-image groups and auto-selection
 
 ## Development Guidelines
 

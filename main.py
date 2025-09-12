@@ -55,6 +55,7 @@ class LineupApp:
         # Initialize data
         self.data_manager = DataManager()
         self.image_manager = ImageManager()
+        self.current_csv_file = None  # Track current CSV file for reload
         self.current_group = None
         self.selected_images = set()
         self.image_widgets = []
@@ -86,6 +87,16 @@ class LineupApp:
             width=120
         )
         self.load_btn.pack(side="left", padx=5)
+        
+        # Reload button
+        self.reload_btn = ctk.CTkButton(
+            self.toolbar,
+            text="Reload",
+            command=self.reload_csv_file,
+            width=80,
+            state="disabled"
+        )
+        self.reload_btn.pack(side="left", padx=5)
         
         # Status label
         self.status_label = ctk.CTkLabel(
@@ -217,11 +228,15 @@ class LineupApp:
                 
                 # Load data using DataManager
                 if self.data_manager.load_csv(file_path):
+                    self.current_csv_file = file_path  # Store for reload functionality
                     summary = self.data_manager.get_overall_summary()
                     
                     # Update status
                     status_text = f"Loaded: {Path(file_path).name} ({summary['total_groups']} groups, {summary['total_images']} images)"
                     self.status_label.configure(text=status_text)
+                    
+                    # Enable reload button
+                    self.reload_btn.configure(state="normal")
                     
                     logger.info(f"CSV loaded successfully: {summary['total_groups']} groups, {summary['total_images']} images, {summary['missing_images']} missing")
                     logger.debug(f"Summary: {summary}")
@@ -243,6 +258,73 @@ class LineupApp:
                 messagebox.showerror("Error", f"Failed to load CSV file:\n{str(e)}")
         else:
             logger.debug("CSV file selection cancelled by user")
+    
+    def reload_csv_file(self):
+        """Reload the currently loaded CSV file and refresh all screens."""
+        if not self.current_csv_file:
+            logger.warning("No CSV file to reload")
+            messagebox.showwarning("No File", "No CSV file is currently loaded to reload.")
+            return
+        
+        try:
+            logger.info(f"Reloading CSV file: {self.current_csv_file}")
+            
+            # Check if file still exists
+            if not Path(self.current_csv_file).exists():
+                logger.error(f"CSV file no longer exists: {self.current_csv_file}")
+                messagebox.showerror("File Not Found", f"The CSV file no longer exists:\n{self.current_csv_file}")
+                return
+            
+            # Store current group for restoration if possible
+            previous_group = self.current_group
+            
+            # Close any active image viewers
+            for viewer in self.active_image_viewers.copy():
+                if hasattr(viewer, 'window') and viewer.window.winfo_exists():
+                    viewer.close()
+            self.active_image_viewers.clear()
+            
+            # Reload data using DataManager
+            if self.data_manager.load_csv(self.current_csv_file):
+                summary = self.data_manager.get_overall_summary()
+                
+                # Update status
+                status_text = f"Reloaded: {Path(self.current_csv_file).name} ({summary['total_groups']} groups, {summary['total_images']} images)"
+                self.status_label.configure(text=status_text)
+                
+                logger.info(f"CSV reloaded successfully: {summary['total_groups']} groups, {summary['total_images']} images, {summary['missing_images']} missing")
+                
+                # Update UI
+                self.setup_content_ui()
+                
+                # Try to restore previous group selection if it still exists
+                if previous_group and previous_group in self.data_manager.get_group_list():
+                    # Check if group should be displayed with current filters
+                    group_summary = self.data_manager.get_group_summary(previous_group)
+                    if not (self.hide_single_groups and group_summary['existing_images'] <= 1):
+                        self.select_group(previous_group)
+                        logger.debug(f"Restored selection to group {previous_group}")
+                    else:
+                        logger.debug(f"Previous group {previous_group} now hidden by filters")
+                
+                # Show operation status
+                self.show_operation_status("CSV file reloaded successfully", "green")
+                
+                # Show warning if there are missing files
+                if summary['missing_images'] > 0:
+                    logger.warning(f"Found {summary['missing_images']} missing image files after reload")
+                    messagebox.showwarning(
+                        "Missing Files",
+                        f"Warning: {summary['missing_images']} image files could not be found.\n"
+                        f"These will be marked as unavailable."
+                    )
+            else:
+                logger.error(f"Failed to reload CSV file: {self.current_csv_file}")
+                messagebox.showerror("Reload Error", f"Failed to reload the CSV file:\n{self.current_csv_file}")
+                
+        except Exception as e:
+            logger.error(f"Error reloading CSV file: {e}", exc_info=True)
+            messagebox.showerror("Reload Error", f"Failed to reload CSV file:\n{str(e)}")
     
     def setup_content_ui(self):
         """Setup the main content UI after CSV is loaded."""

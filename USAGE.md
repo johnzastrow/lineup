@@ -7,8 +7,10 @@ This guide covers all the features and workflows in Lineup for efficient photo d
 ### Basic Workflow
 1. **Launch**: Run `uv run main.py`
 2. **Load Data**: Click "Load CSV File" to import your photo groups
-3. **Set Move Directory**: (Optional) Click "Browse..." to pre-select destination
-4. **Review & Act**: Navigate groups, select duplicates, and take actions
+3. **Configure**: Toggle "Auto-select Duplicates" and "Hide Single Groups" as needed
+4. **Reload**: Use "Reload" button to refresh data from the same CSV file
+5. **Set Move Directory**: (Optional) Click "Browse..." to pre-select destination
+6. **Review & Act**: Navigate groups, select duplicates, and take actions
 
 ## 📁 Data Requirements
 
@@ -52,11 +54,19 @@ GroupID,Master,File,Path,MatchReasons
 ## 🖱️ Navigation & Controls
 
 ### Mouse Actions
-- **Single Click**: Select/deselect image
+- **Single Click**: Select/deselect image (toggles selection)
 - **Double Click**: Open full-size image viewer
 - **Group Button Click**: Switch to different group
+- **Toggle Switches**: Configure auto-selection and filtering options
 
 ### Keyboard Shortcuts
+#### **Main Application**
+- **D**: Delete selected images
+- **M**: Move selected images
+- **P**: Previous group
+- **N**: Next group
+
+#### **Image Viewer**
 - **← →**: Navigate between images in viewer
 - **Esc**: Close image viewer
 - **Enter**: Close image viewer
@@ -113,6 +123,24 @@ GroupID,Master,File,Path,MatchReasons
 
 ## ⚡ Advanced Features
 
+### CSV Reload Functionality
+- **Reload Button**: Refresh data from currently loaded CSV file
+- **State Preservation**: Maintains current group selection when possible
+- **Auto-Validation**: Checks for missing files and updates displays
+- **Error Handling**: Shows clear messages if CSV file is moved/deleted
+
+### Smart Selection System
+- **Auto-Select Duplicates**: Automatically selects non-master images
+- **Master Protection**: Selecting master image clears other selections
+- **Visual Feedback**: Clear color coding for selection states
+- **Selection Logic**: Prevents accidentally deleting all images in a group
+
+### Filter Controls
+- **Hide Single Groups**: Focus on groups with actual duplicates
+- **Toggle Switches**: Instantly apply/remove filters
+- **Dynamic Updates**: Group list updates automatically with filter changes
+- **State Memory**: Remembers filter settings during session
+
 ### Dynamic Thumbnails
 - Automatically sizes thumbnails (200-400px) based on window size
 - More columns = smaller thumbnails
@@ -129,6 +157,7 @@ GroupID,Master,File,Path,MatchReasons
 - Screen updates automatically after file operations
 - Group counts refresh to show current state
 - Missing files display with ❌ indicators
+- Auto-advance to next group after operations
 - No manual refresh needed
 
 ### Smart Conflict Resolution
@@ -140,8 +169,10 @@ GroupID,Master,File,Path,MatchReasons
 
 ### Operation Status Messages
 - Appear in main toolbar after operations
-- **Green**: "Moved X file(s)" for successful moves
+- **Green**: "Moved X file(s)" and "CSV file reloaded successfully"
 - **Red**: "Deleted X file(s)" for deletions
+- **Blue**: "Auto-selected X image(s)" and navigation messages
+- **Orange**: Warnings like "Master selected - cleared other selections"
 - Auto-clear after 3 seconds
 
 ### Progress Tracking
@@ -169,10 +200,14 @@ GroupID,Master,File,Path,MatchReasons
 ## 💡 Best Practices
 
 ### Efficient Workflow
-1. **Pre-select move directory** for batch operations
-2. **Use image viewer** for quick review and navigation
-3. **Process groups systematically** using group navigation
-4. **Check operation status** messages for confirmation
+1. **Enable "Auto-select Duplicates"** for quick processing
+2. **Hide single groups** to focus on actual duplicates
+3. **Pre-select move directory** for batch operations
+4. **Use keyboard shortcuts** (D, M, P, N) for rapid processing
+5. **Use image viewer** for detailed review and navigation
+6. **Let auto-advance** move you through groups efficiently
+7. **Use reload button** after external file changes
+8. **Check operation status** messages for confirmation
 
 ### Data Management
 - **Backup important photos** before processing
@@ -192,6 +227,13 @@ GroupID,Master,File,Path,MatchReasons
 - Use full absolute paths in CSV files
 - Forward slashes work on all platforms
 - Spaces in paths are handled automatically
+- Reload function validates all file paths
+
+### State Management
+- Current CSV file path is tracked for reload functionality
+- Filter settings persist during session
+- Move directory setting shared across all components
+- Group selection restored after reload when possible
 
 ### Supported Image Formats
 - JPEG, PNG, TIFF, BMP, GIF
@@ -204,3 +246,4 @@ GroupID,Master,File,Path,MatchReasons
 - macOS: Use standard Unix paths  
 - Linux: Use standard Unix paths
 - GUI adapts to system theme automatically
+- Dark mode toggle for manual theme control
