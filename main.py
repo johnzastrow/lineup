@@ -3,7 +3,7 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox
 import logging
 from pathlib import Path
-from data_manager import DataManager
+from data_manager_enhanced import DataManager
 from image_manager import ImageManager, ImageWidget, ImageViewerWindow
 
 # Configure enhanced logging
