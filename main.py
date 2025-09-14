@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from data_manager_enhanced import DataManager
 from image_manager import ImageManager, ImageWidget, ImageViewerWindow
+from list_screen import ListScreen
 
 # Configure enhanced logging
 def setup_logging():
@@ -97,6 +98,17 @@ class LineupApp:
             state="disabled"
         )
         self.reload_btn.pack(side="left", padx=5)
+        
+        # Views dropdown menu
+        self.views_menu = ctk.CTkOptionMenu(
+            self.toolbar,
+            values=["Select View...", "📋 List View", "📊 Statistics", "🔍 Search"],
+            command=self.handle_view_selection,
+            width=120,
+            state="disabled"
+        )
+        self.views_menu.pack(side="left", padx=5)
+        self.views_menu.set("Select View...")
         
         # Status label
         self.status_label = ctk.CTkLabel(
@@ -235,8 +247,9 @@ class LineupApp:
                     status_text = f"Loaded: {Path(file_path).name} ({summary['total_groups']} groups, {summary['total_images']} images)"
                     self.status_label.configure(text=status_text)
                     
-                    # Enable reload button
+                    # Enable reload and list view buttons
                     self.reload_btn.configure(state="normal")
+                    self.views_menu.configure(state="normal")
                     
                     logger.info(f"CSV loaded successfully: {summary['total_groups']} groups, {summary['total_images']} images, {summary['missing_images']} missing")
                     logger.debug(f"Summary: {summary}")
@@ -325,6 +338,24 @@ class LineupApp:
         except Exception as e:
             logger.error(f"Error reloading CSV file: {e}", exc_info=True)
             messagebox.showerror("Reload Error", f"Failed to reload CSV file:\n{str(e)}")
+    
+    def open_list_view(self):
+        """Open the advanced list view screen."""
+        try:
+            logger.info("Opening list view screen")
+            
+            # Create and show the list screen
+            list_screen = ListScreen(
+                parent=self.root,
+                data_manager=self.data_manager,
+                image_manager=self.image_manager,
+                main_app=self
+            )
+            list_screen.show()
+            
+        except Exception as e:
+            logger.error(f"Error opening list view: {e}", exc_info=True)
+            messagebox.showerror("Error", f"Failed to open list view:\n{str(e)}")
     
     def setup_content_ui(self):
         """Setup the main content UI after CSV is loaded."""
@@ -966,6 +997,20 @@ class LineupApp:
         self.hide_single_groups = self.hide_single_switch.get()
         logger.info(f"Hide single groups {'enabled' if self.hide_single_groups else 'disabled'}")
         
+        # Count total and single groups for user feedback
+        if hasattr(self, 'data_manager') and self.data_manager.has_data():
+            all_groups = self.data_manager.get_group_list()
+            single_groups = [g for g in all_groups if self.data_manager.get_group_summary(g)['existing_images'] <= 1]
+            
+            if self.hide_single_groups:
+                status_msg = f"Hiding {len(single_groups)} single-image groups ({len(all_groups) - len(single_groups)} groups shown)"
+                status_color = "blue"
+            else:
+                status_msg = f"Showing all {len(all_groups)} groups ({len(single_groups)} single-image groups included)"
+                status_color = "green"
+            
+            self.show_operation_status(status_msg, status_color)
+        
         # Repopulate group list with new filter
         if hasattr(self, 'group_list_frame'):
             current_group = self.current_group
@@ -976,15 +1021,17 @@ class LineupApp:
                 available_groups = list(self.group_buttons.keys())
                 if available_groups:
                     self.select_group(available_groups[0])
-                    self.show_operation_status(f"Switched to group {available_groups[0]} (previous group hidden)", "blue")
+                    logger.info(f"Current group {current_group} was hidden, switched to {available_groups[0]}")
                 else:
                     # No groups to display
                     self.current_group = None
+                    # Clear display area
                     for widget in self.display_frame.winfo_children():
                         widget.destroy()
+                    
                     no_groups_label = ctk.CTkLabel(
                         self.display_frame,
-                        text="No groups to display with current filters",
+                        text="No groups to display with current filter settings",
                         font=ctk.CTkFont(size=14)
                     )
                     no_groups_label.pack(expand=True)
@@ -1050,6 +1097,58 @@ class LineupApp:
             ctk.set_appearance_mode("dark")
         else:
             ctk.set_appearance_mode("light")
+    
+    def handle_view_selection(self, selection):
+        """Handle selection from the views dropdown menu."""
+        logger.info(f"View selection: {selection}")
+        
+        if selection == "📋 List View":
+            self.open_list_view()
+        elif selection == "📊 Statistics":
+            self.show_statistics_view()
+        elif selection == "🔍 Search":
+            self.show_search_view()
+        elif selection == "Select View...":
+            # Default option - do nothing
+            return
+        
+        # Reset menu to default after action
+        self.views_menu.set("Select View...")
+    
+    def show_statistics_view(self):
+        """Show overall statistics for the loaded data."""
+        if not self.data_manager.has_data():
+            self.show_operation_status("No data loaded", "red")
+            return
+        
+        summary = self.data_manager.get_overall_summary()
+        stats_message = (
+            f"Dataset Statistics:\n"
+            f"• Total Groups: {summary['total_groups']}\n"
+            f"• Total Images: {summary['total_images']}\n"
+            f"• Missing Images: {summary['missing_images']}\n"
+            f"• Available Images: {summary['total_images'] - summary['missing_images']}\n"
+            f"• Groups with Multiple Images: {len([g for g in self.data_manager.get_group_list() if self.data_manager.get_group_summary(g)['existing_images'] > 1])}"
+        )
+        
+        # Show in a dialog
+        dialog = ctk.CTkToplevel(self.root)
+        dialog.title("Dataset Statistics")
+        dialog.geometry("400x300")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        label = ctk.CTkLabel(dialog, text=stats_message, font=ctk.CTkFont(size=12), justify="left")
+        label.pack(padx=20, pady=20)
+        
+        close_btn = ctk.CTkButton(dialog, text="Close", command=dialog.destroy)
+        close_btn.pack(pady=10)
+        
+        logger.info("Statistics view displayed")
+    
+    def show_search_view(self):
+        """Show search functionality - placeholder for future implementation."""
+        self.show_operation_status("Search functionality - use List View for now", "blue")
     
     def run(self):
         """Run the application."""
