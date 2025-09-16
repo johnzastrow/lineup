@@ -6,7 +6,7 @@ A cross-platform, intuitive, python-based desktop application with GUI for ident
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/johnzastrow/lineup?style=flat-square)]
 
-![logo](docs/shed/shed_white.png)
+![shed](docs/shed/shed_white.png)
 
 ![logo](docs/logo.png)
 
