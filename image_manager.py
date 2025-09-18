@@ -74,40 +74,51 @@ class ImageManager:
         """Get the path for a cached thumbnail."""
         return self.cache_dir / f"{cache_key}.png"
     
-    def load_thumbnail(self, file_path: str, callback=None) -> Optional[ImageTk.PhotoImage]:
-        """Load or generate thumbnail for an image."""
+    def load_thumbnail(self, file_path: str, callback=None, quick_load=False) -> Optional[ImageTk.PhotoImage]:
+        """Load or generate thumbnail for an image.
+
+        Args:
+            file_path: Path to the image file
+            callback: Optional callback function for async loading
+            quick_load: If True, return a quick low-quality preview first
+        """
         if not Path(file_path).exists():
             return None
-        
+
         cache_key = self._get_cache_key(file_path, self.thumbnail_size)
-        
+
         # Check in-memory cache first
         if cache_key in self.thumbnail_cache:
             if callback:
                 callback(self.thumbnail_cache[cache_key])
             return self.thumbnail_cache[cache_key]
-        
+
         # Check disk cache
         cached_path = self._get_cached_thumbnail_path(cache_key)
         file_stat = Path(file_path).stat()
-        
-        if (cached_path.exists() and 
-            cache_key in self.cache_metadata and 
+
+        if (cached_path.exists() and
+            cache_key in self.cache_metadata and
             self.cache_metadata[cache_key].get('mtime') == file_stat.st_mtime):
-            
+
             try:
                 # Load from disk cache
                 image = Image.open(cached_path)
                 photo_image = ImageTk.PhotoImage(image)
                 self.thumbnail_cache[cache_key] = photo_image
-                
+
                 if callback:
                     callback(photo_image)
                 return photo_image
-                
+
             except Exception as e:
                 logging.warning(f"Could not load cached thumbnail for {file_path}: {e}")
-        
+
+        # Quick load mode: provide immediate low-quality preview
+        if quick_load and callback:
+            self._load_quick_thumbnail_async(file_path, cache_key, callback)
+            return None
+
         # Generate new thumbnail
         if callback:
             # Generate asynchronously
@@ -156,6 +167,43 @@ class ImageManager:
             logging.error(f"Could not generate thumbnail for {file_path}: {e}")
             return None
     
+    def _load_quick_thumbnail_async(self, file_path: str, cache_key: str, callback):
+        """Load a quick, low-quality thumbnail first, then a high-quality one."""
+        def quick_load_worker():
+            try:
+                # First pass: Quick, low-quality thumbnail
+                with Image.open(file_path) as image:
+                    if image.mode in ('RGBA', 'LA', 'P'):
+                        image = image.convert('RGB')
+
+                    # Create a very quick, low-quality preview (1/4 size, then scaled up)
+                    quick_size = (self.thumbnail_size[0] // 2, self.thumbnail_size[1] // 2)
+                    quick_image = image.copy()
+                    quick_image.thumbnail(quick_size, Image.Resampling.NEAREST)  # Fastest resampling
+
+                    # Scale back up for display
+                    quick_image = quick_image.resize(self.thumbnail_size, Image.Resampling.NEAREST)
+                    quick_photo = ImageTk.PhotoImage(quick_image)
+
+                    # Provide quick preview immediately
+                    callback(quick_photo)
+
+                    # Now generate high-quality thumbnail in background
+                    high_quality_photo = self._generate_thumbnail(file_path, cache_key)
+                    if high_quality_photo:
+                        # Replace with high-quality version
+                        callback(high_quality_photo)
+
+            except Exception as e:
+                logger.warning(f"Failed to load quick thumbnail for {file_path}: {e}")
+                # Fallback to normal thumbnail generation
+                photo_image = self._generate_thumbnail(file_path, cache_key)
+                if photo_image:
+                    callback(photo_image)
+
+        thread = threading.Thread(target=quick_load_worker, daemon=True)
+        thread.start()
+
     def _generate_thumbnail_async(self, file_path: str, cache_key: str, callback):
         """Generate thumbnail asynchronously and call callback."""
         photo_image = self._generate_thumbnail(file_path, cache_key)
@@ -163,35 +211,65 @@ class ImageManager:
             # Schedule callback on main thread
             callback(photo_image)
     
-    def load_preview_image(self, file_path: str) -> Optional[ImageTk.PhotoImage]:
-        """Load a larger preview image."""
+    def load_preview_image(self, file_path: str, callback=None, target_size=None) -> Optional[ImageTk.PhotoImage]:
+        """Load a larger preview image.
+
+        Args:
+            file_path: Path to the image file
+            callback: Optional callback for async loading
+            target_size: Optional target size (width, height), defaults to preview_size
+        """
         if not Path(file_path).exists():
             return None
-        
-        cache_key = self._get_cache_key(file_path, self.preview_size)
-        
+
+        size = target_size or self.preview_size
+        cache_key = self._get_cache_key(file_path, size)
+
         # Check in-memory cache
         if cache_key in self.image_cache:
+            if callback:
+                callback(self.image_cache[cache_key])
             return self.image_cache[cache_key]
-        
+
+        if callback:
+            # Load asynchronously
+            thread = threading.Thread(
+                target=self._load_preview_async,
+                args=(file_path, cache_key, size, callback)
+            )
+            thread.daemon = True
+            thread.start()
+            return None
+
+        # Load synchronously
+        return self._load_preview_sync(file_path, cache_key, size)
+
+    def _load_preview_sync(self, file_path: str, cache_key: str, size: Tuple[int, int]) -> Optional[ImageTk.PhotoImage]:
+        """Load preview image synchronously."""
         try:
             with Image.open(file_path) as image:
                 # Convert to RGB if necessary
                 if image.mode in ('RGBA', 'LA', 'P'):
                     image = image.convert('RGB')
-                
+
                 # Resize for preview
-                image.thumbnail(self.preview_size, Image.Resampling.LANCZOS)
-                
+                image.thumbnail(size, Image.Resampling.LANCZOS)
+
                 # Create PhotoImage
                 photo_image = ImageTk.PhotoImage(image)
                 self.image_cache[cache_key] = photo_image
-                
+
                 return photo_image
-                
+
         except Exception as e:
             logging.error(f"Could not load preview image for {file_path}: {e}")
             return None
+
+    def _load_preview_async(self, file_path: str, cache_key: str, size: Tuple[int, int], callback):
+        """Load preview image asynchronously."""
+        photo_image = self._load_preview_sync(file_path, cache_key, size)
+        if photo_image and callback:
+            callback(photo_image)
     
     def get_image_info(self, file_path: str) -> Dict:
         """Get basic information about an image file."""
@@ -215,7 +293,13 @@ class ImageManager:
             return {'error': str(e)}
     
     def preload_group_images(self, file_paths: list, group_id: str = None, priority: bool = False):
-        """Pre-load images for a group in background thread."""
+        """Pre-load images for a group in background thread.
+
+        Args:
+            file_paths: List of image file paths to preload
+            group_id: Group identifier for tracking
+            priority: If True, load with higher priority and larger cache allocation
+        """
         if not file_paths:
             return
 
@@ -227,8 +311,13 @@ class ImageManager:
                 return
 
         def preload_worker():
-            logger.debug(f"Starting preload for group {group_id} with {len(file_paths)} images")
+            logger.debug(f"Starting {'priority' if priority else 'background'} preload for group {group_id} with {len(file_paths)} images")
             loaded_count = 0
+
+            # Adjust cache size for priority loading
+            original_max_cache = self.max_cache_size
+            if priority:
+                self.max_cache_size = min(100, original_max_cache * 2)  # Double cache size for priority loading
 
             for file_path in file_paths:
                 if not Path(file_path).exists():
@@ -239,19 +328,31 @@ class ImageManager:
                 if cache_key in self.image_cache:
                     continue
 
-                # Manage cache size
-                if len(self.image_cache) >= self.max_cache_size:
+                # For priority loading, be more aggressive with cache management
+                cache_threshold = self.max_cache_size if priority else self.max_cache_size * 0.8
+                if len(self.image_cache) >= cache_threshold:
                     self._evict_oldest_cache_entries()
 
                 try:
-                    # Load preview image
-                    self.load_preview_image(file_path)
+                    # Load preview image synchronously for better control
+                    self._load_preview_sync(file_path, cache_key, self.preview_size)
                     loaded_count += 1
                     logger.debug(f"Pre-loaded image {loaded_count}/{len(file_paths)}: {Path(file_path).name}")
+
+                    # For priority loading, also pre-load thumbnails
+                    if priority:
+                        thumb_cache_key = self._get_cache_key(file_path, self.thumbnail_size)
+                        if thumb_cache_key not in self.thumbnail_cache:
+                            self._generate_thumbnail(file_path, thumb_cache_key)
+
                 except Exception as e:
                     logger.warning(f"Failed to preload {file_path}: {e}")
 
-            logger.info(f"Preload complete for group {group_id}: {loaded_count} images loaded")
+            # Restore original cache size
+            if priority:
+                self.max_cache_size = original_max_cache
+
+            logger.info(f"{'Priority' if priority else 'Background'} preload complete for group {group_id}: {loaded_count} images loaded")
 
         thread = threading.Thread(target=preload_worker, daemon=True)
         thread.start()
@@ -379,22 +480,35 @@ class ImageWidget(ctk.CTkFrame):
         self.update_appearance()
     
     def load_thumbnail(self):
-        """Load thumbnail image."""
+        """Load thumbnail image with quick preview first."""
         if not self.file_exists:
             self.image_label.configure(text="❌\nMissing\nFile")
             return
-        
+
         def thumbnail_callback(photo_image):
             if photo_image:
                 self.image_label.configure(image=photo_image, text="")
-        
+                # Keep reference to prevent garbage collection
+                self.image_label.image = photo_image
+
+        # Try to load from cache first (immediate)
         thumbnail = self.image_manager.load_thumbnail(
             self.image_data['Path'],
-            callback=thumbnail_callback
+            callback=None  # No callback, just check cache
         )
-        
+
         if thumbnail:
+            # Got it from cache, display immediately
             self.image_label.configure(image=thumbnail, text="")
+            self.image_label.image = thumbnail
+        else:
+            # Not in cache, use quick loading with callback
+            self.image_label.configure(text="Loading...")
+            self.image_manager.load_thumbnail(
+                self.image_data['Path'],
+                callback=thumbnail_callback,
+                quick_load=True  # Use the new quick loading feature
+            )
     
     def on_click(self, event):
         """Handle click events."""
@@ -743,25 +857,28 @@ class ImageViewerWindow:
             )
     
     def load_full_image(self, file_path: str):
-        """Load and display full-size image."""
+        """Load and display full-size image with progressive loading."""
         try:
             # Get window size for optimal display
             self.window.update_idletasks()
-            max_width = self.image_frame.winfo_width() - 20  # Reduced padding from 40 to 20
-            max_height = self.image_frame.winfo_height() - 20  # Reduced padding from 40 to 20
+            max_width = self.image_frame.winfo_width() - 20
+            max_height = self.image_frame.winfo_height() - 20
 
             if max_width <= 1 or max_height <= 1:
-                max_width = 800  # Increased default from 600
-                max_height = 600  # Increased default from 400
+                max_width = 800
+                max_height = 600
 
-            # Check if we have a cached preview image that's close to our target size
+            target_size = (max_width, max_height)
+
+            # Check if we have a cached preview image first
             cache_key = self.image_manager._get_cache_key(file_path, self.image_manager.preview_size)
             cached_image = self.image_manager.image_cache.get(cache_key)
 
             if cached_image:
-                # Use cached image if available - much faster
+                # Use cached image immediately - much faster
                 self.image_label.configure(image=cached_image, text="")
                 self.image_label.image = cached_image
+                logger.debug(f"Used cached image for {Path(file_path).name}")
 
                 # Get original dimensions for title
                 try:
@@ -771,36 +888,15 @@ class ImageViewerWindow:
                 except:
                     self.window.title(f"Image Viewer - {Path(file_path).name}")
 
-                logger.debug(f"Used cached image for {Path(file_path).name}")
+                # If the cached image is smaller than our target, load a better quality version in background
+                if (cached_image.width() < max_width * 0.8 or
+                    cached_image.height() < max_height * 0.8):
+                    self._load_high_quality_async(file_path, target_size)
                 return
 
-            # Load fresh image if not cached
-            with Image.open(file_path) as image:
-                # Convert to RGB if necessary
-                if image.mode in ('RGBA', 'LA', 'P'):
-                    image = image.convert('RGB')
-
-                # Calculate size to fit window while maintaining aspect ratio
-                img_width, img_height = image.size
-                scale_width = max_width / img_width
-                scale_height = max_height / img_height
-                scale = min(scale_width, scale_height)  # Allow upscaling for better screen utilization
-
-                new_width = int(img_width * scale)
-                new_height = int(img_height * scale)
-
-                # Resize image
-                resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-
-                # Create PhotoImage and display
-                photo_image = ImageTk.PhotoImage(resized_image)
-                self.image_label.configure(image=photo_image, text="")
-
-                # Keep reference to prevent garbage collection
-                self.image_label.image = photo_image
-
-                # Update window title with image info
-                self.window.title(f"Image Viewer - {Path(file_path).name} ({img_width}×{img_height})")
+            # No cached image available, show loading message and load asynchronously
+            self.image_label.configure(image=None, text="Loading full image...")
+            self._load_high_quality_async(file_path, target_size)
 
         except Exception as e:
             logging.error(f"Could not load image {file_path}: {e}")
@@ -808,6 +904,28 @@ class ImageViewerWindow:
                 image=None,
                 text=f"❌ Error Loading Image\n\n{str(e)}"
             )
+
+    def _load_high_quality_async(self, file_path: str, target_size: Tuple[int, int]):
+        """Load high-quality image asynchronously."""
+        def load_callback(photo_image):
+            if photo_image:
+                self.image_label.configure(image=photo_image, text="")
+                self.image_label.image = photo_image
+
+                # Update window title with image info
+                try:
+                    with Image.open(file_path) as img:
+                        img_width, img_height = img.size
+                        self.window.title(f"Image Viewer - {Path(file_path).name} ({img_width}×{img_height})")
+                except:
+                    self.window.title(f"Image Viewer - {Path(file_path).name}")
+
+        # Use the async preview loading
+        self.image_manager.load_preview_image(
+            file_path,
+            callback=load_callback,
+            target_size=target_size
+        )
     
     def previous_image(self):
         """Navigate to previous image."""

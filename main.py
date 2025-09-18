@@ -961,6 +961,12 @@ class LineupApp:
         
         # Update selection UI
         self.update_selection_ui()
+
+        # Start aggressive pre-loading for current group images
+        self.start_current_group_preloading()
+
+        # Also pre-load adjacent groups for faster navigation
+        self.preload_adjacent_groups()
     
     def auto_select_non_masters(self):
         """Automatically select non-master images for easy processing."""
@@ -989,6 +995,26 @@ class LineupApp:
         
         # Update button states after auto-selection
         self.update_selection_ui()
+
+    def start_current_group_preloading(self):
+        """Start aggressive pre-loading for current group images."""
+        if not self.image_widgets:
+            return
+
+        # Get all file paths in current group
+        file_paths = []
+        for widget in self.image_widgets:
+            if widget.file_exists:
+                file_paths.append(widget.image_data['Path'])
+
+        if file_paths:
+            # Pre-load preview images for all images in current group
+            self.image_manager.preload_group_images(
+                file_paths,
+                group_id=f"current_{self.current_group}",
+                priority=True
+            )
+            logger.info(f"Started pre-loading {len(file_paths)} images in current group {self.current_group}")
     
     def open_image_viewer(self, image_index: int):
         """Open full-size image viewer with navigation."""
@@ -1403,9 +1429,16 @@ class LineupApp:
         self.prev_group_btn.configure(state=state)
         self.next_group_btn.configure(state=state)
 
-    def preload_adjacent_groups(self, current_group_id: str):
+    def preload_adjacent_groups(self, current_group_id: str = None):
         """Pre-load images for previous and next groups for faster navigation."""
         if not self.data_manager.has_data():
+            return
+
+        # Use current group if not specified
+        if current_group_id is None:
+            current_group_id = self.current_group
+
+        if not current_group_id:
             return
 
         group_list = self.data_manager.get_group_list()
@@ -1420,7 +1453,7 @@ class LineupApp:
             prev_group_data = self.data_manager.get_group(prev_group_id)
             if prev_group_data is not None:
                 file_paths = [row['Path'] for _, row in prev_group_data.iterrows() if row.get('FileExists', False)]
-                self.image_manager.preload_group_images(file_paths, f"prev_{prev_group_id}")
+                self.image_manager.preload_group_images(file_paths, f"prev_{prev_group_id}", priority=False)
                 logger.debug(f"Started preloading previous group {prev_group_id} with {len(file_paths)} images")
 
         # Pre-load next group
@@ -1429,7 +1462,7 @@ class LineupApp:
             next_group_data = self.data_manager.get_group(next_group_id)
             if next_group_data is not None:
                 file_paths = [row['Path'] for _, row in next_group_data.iterrows() if row.get('FileExists', False)]
-                self.image_manager.preload_group_images(file_paths, f"next_{next_group_id}")
+                self.image_manager.preload_group_images(file_paths, f"next_{next_group_id}", priority=False)
                 logger.debug(f"Started preloading next group {next_group_id} with {len(file_paths)} images")
 
     def toggle_dark_mode(self):
