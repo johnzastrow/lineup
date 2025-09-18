@@ -262,7 +262,7 @@ class ImageWidget(ctk.CTkFrame):
         
         # File name label
         file_name = Path(self.image_data['File']).name
-        
+
         self.name_label = ctk.CTkLabel(
             self,
             text=file_name,
@@ -271,6 +271,19 @@ class ImageWidget(ctk.CTkFrame):
             wraplength=self.thumbnail_size - 10  # Enable text wrapping
         )
         self.name_label.grid(row=1, column=0, padx=5, pady=(0, 5))
+
+        # File path label
+        file_path = self.image_data['Path']
+
+        self.path_label = ctk.CTkLabel(
+            self,
+            text=file_path,
+            width=self.thumbnail_size,
+            font=ctk.CTkFont(size=max(7, min(10, self.thumbnail_size // 20))),
+            wraplength=self.thumbnail_size - 10,  # Enable text wrapping
+            text_color="gray"
+        )
+        self.path_label.grid(row=2, column=0, padx=5, pady=(0, 5))
         
         # Master indicator
         if self.is_master:
@@ -280,8 +293,8 @@ class ImageWidget(ctk.CTkFrame):
                 text_color="gold",
                 font=ctk.CTkFont(size=10, weight="bold")
             )
-            self.master_label.grid(row=2, column=0, padx=5, pady=(0, 5))
-        
+            self.master_label.grid(row=3, column=0, padx=5, pady=(0, 5))
+
         # File status
         if not self.file_exists:
             self.status_label = ctk.CTkLabel(
@@ -290,12 +303,13 @@ class ImageWidget(ctk.CTkFrame):
                 text_color="red",
                 font=ctk.CTkFont(size=10)
             )
-            self.status_label.grid(row=3, column=0, padx=5, pady=(0, 5))
+            self.status_label.grid(row=4, column=0, padx=5, pady=(0, 5))
         
         # Bind click events
         self.bind("<Button-1>", self.on_click)
         self.image_label.bind("<Button-1>", self.on_click)
         self.name_label.bind("<Button-1>", self.on_click)
+        self.path_label.bind("<Button-1>", self.on_click)
         
         # Update border for master status
         self.update_appearance()
@@ -365,8 +379,8 @@ class ImageViewerWindow:
         # Create window
         self.window = ctk.CTkToplevel(parent)
         self.window.title("Image Viewer")
-        self.window.geometry("800x600")
-        self.window.minsize(400, 300)
+        self.window.geometry("1200x900")  # Increased from 800x600 to better use screen space
+        self.window.minsize(600, 450)  # Increased minimum size
         
         # Make window modal
         self.window.transient(parent)
@@ -455,6 +469,15 @@ class ImageViewerWindow:
             font=ctk.CTkFont(size=12, weight="bold")
         )
         self.filename_label.pack(side="left", padx=10)
+
+        # File path
+        self.filepath_label = ctk.CTkLabel(
+            self.info_frame,
+            text="",
+            font=ctk.CTkFont(size=10),
+            text_color="gray"
+        )
+        self.filepath_label.pack(side="left", padx=10)
         
         # Master indicator
         self.master_indicator = ctk.CTkLabel(
@@ -613,6 +636,7 @@ class ImageViewerWindow:
         
         file_path = Path(image_data['File'])
         self.filename_label.configure(text=file_path.name)
+        self.filepath_label.configure(text=image_data['Path'])
         
         # Show master indicator
         if current_widget.is_master:
@@ -641,12 +665,12 @@ class ImageViewerWindow:
         try:
             # Get window size for optimal display
             self.window.update_idletasks()
-            max_width = self.image_frame.winfo_width() - 40
-            max_height = self.image_frame.winfo_height() - 40
-            
+            max_width = self.image_frame.winfo_width() - 20  # Reduced padding from 40 to 20
+            max_height = self.image_frame.winfo_height() - 20  # Reduced padding from 40 to 20
+
             if max_width <= 1 or max_height <= 1:
-                max_width = 600
-                max_height = 400
+                max_width = 800  # Increased default from 600
+                max_height = 600  # Increased default from 400
             
             with Image.open(file_path) as image:
                 # Convert to RGB if necessary
@@ -657,7 +681,7 @@ class ImageViewerWindow:
                 img_width, img_height = image.size
                 scale_width = max_width / img_width
                 scale_height = max_height / img_height
-                scale = min(scale_width, scale_height, 1.0)  # Don't upscale
+                scale = min(scale_width, scale_height)  # Allow upscaling for better screen utilization
                 
                 new_width = int(img_width * scale)
                 new_height = int(img_height * scale)

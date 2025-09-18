@@ -587,24 +587,36 @@ class LineupApp:
             available_width = 800  # Default fallback
         
         # Calculate dynamic thumbnail size and columns
-        min_thumb_size = 200
-        max_thumb_size = 400
+        min_thumb_size = 250
+        max_thumb_size = 800  # Increased from 400 to better use screen space
         min_columns = 2
-        max_columns = 6
+        max_columns = 8  # Increased from 6 to allow more flexible layouts
         
         # Try different column counts to find optimal size
         best_columns = min_columns
         best_thumb_size = min_thumb_size
-        
+
         for cols in range(min_columns, max_columns + 1):
             padding = 10 * (cols + 1)  # Account for padding
             available_per_image = (available_width - padding) / cols
-            
+
             if available_per_image >= min_thumb_size:
                 thumb_size = min(available_per_image, max_thumb_size)
                 if thumb_size > best_thumb_size:
                     best_columns = cols
                     best_thumb_size = thumb_size
+
+        # If we have a very wide screen, prefer larger thumbnails over more columns
+        if available_width > 1600 and best_thumb_size < max_thumb_size:
+            # Recalculate with preference for larger thumbnails
+            for cols in range(min_columns, best_columns + 1):
+                padding = 10 * (cols + 1)
+                available_per_image = (available_width - padding) / cols
+                thumb_size = min(available_per_image, max_thumb_size)
+                if thumb_size >= best_thumb_size * 1.2:  # At least 20% larger
+                    best_columns = cols
+                    best_thumb_size = thumb_size
+                    break
         
         # Update image manager thumbnail size
         self.image_manager.thumbnail_size = (int(best_thumb_size), int(best_thumb_size))
