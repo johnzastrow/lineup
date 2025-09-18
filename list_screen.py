@@ -190,7 +190,7 @@ class ListScreen:
         self.search_column_var = tk.StringVar(value="all")
         search_column_combo = ctk.CTkComboBox(
             filter_frame,
-            values=["all", "File", "Path", "CameraMake", "CameraModel", "IPTCKeywords", "MatchReasons"],
+            values=["all", "File", "Path", "IPTCKeywords", "MatchReasons"],
             variable=self.search_column_var,
             command=self.on_search_changed,
             width=120
@@ -257,16 +257,13 @@ class ListScreen:
             ("select", "☑", 40),
             ("thumbnail", "📷", 60),
             ("GroupID", "Group ID", 80),
-            ("Path", "File Path", 300),
+            ("Path", "File Path", 400),
             ("Master", "Master", 60),
-            ("QualityScore", "Score", 60),
             ("Width", "Width", 70),
             ("Height", "Height", 70),
             ("Size", "Size (KB)", 90),
             ("Created", "Date Created", 120),
-            ("Algorithm", "Algorithm", 80),
             ("FileType", "Type", 60),
-            ("CameraMake", "Camera", 100),
             ("SimilarityScore", "Similarity", 80),
             ("MatchReasons", "Match Reasons", 200)
         ]
@@ -496,8 +493,8 @@ class ListScreen:
         search_text = search_text.lower()
         
         if column == "all":
-            # Search all text columns
-            text_columns = ['File', 'Path', 'Name', 'CameraMake', 'CameraModel', 'IPTCKeywords', 'IPTCCaption', 'XMPKeywords', 'XMPTitle', 'MatchReasons']
+            # Search all text columns (removed CameraMake, CameraModel)
+            text_columns = ['File', 'Path', 'Name', 'IPTCKeywords', 'IPTCCaption', 'XMPKeywords', 'XMPTitle', 'MatchReasons']
             mask = pd.Series([False] * len(data))
             
             for col in text_columns:
@@ -593,7 +590,16 @@ class ListScreen:
                     if pd.isna(value):
                         values.append("")
                     else:
-                        values.append(str(value)[:50])  # Truncate long values
+                        # Smart truncation for file paths vs other values
+                        str_value = str(value)
+                        if col_id == "Path" and len(str_value) > 80:
+                            # For file paths, truncate from left to preserve filename and recent dirs
+                            values.append("..." + str_value[-77:])
+                        elif len(str_value) > 50:
+                            # For other values, truncate from right
+                            values.append(str_value[:47] + "...")
+                        else:
+                            values.append(str_value)
                 else:
                     values.append("")
             
@@ -839,27 +845,145 @@ class ListScreen:
         """Move selected images."""
         if not self.selected_rows:
             return
-        
-        # This would integrate with the main app's move functionality
+
+        # Use main app's pre-selected directory or ask for one
+        dest_path = None
+        if self.main_app and hasattr(self.main_app, 'move_to_directory') and self.main_app.move_to_directory and self.main_app.move_to_directory.exists():
+            dest_path = self.main_app.move_to_directory
+        else:
+            from tkinter import filedialog
+            dest_dir = filedialog.askdirectory(
+                title="Select destination directory",
+                parent=self.window
+            )
+            if not dest_dir:
+                return
+            dest_path = Path(dest_dir)
+
+            # Update main app's global directory setting if available
+            if self.main_app and hasattr(self.main_app, 'move_to_directory'):
+                self.main_app.move_to_directory = dest_path
+                if hasattr(self.main_app, 'moveto_display'):
+                    display_text = str(dest_path)
+                    if len(display_text) > 30:
+                        display_text = "..." + display_text[-27:]
+                    self.main_app.moveto_display.configure(
+                        text=display_text,
+                        text_color="green"
+                    )
+
+        if not dest_path.exists():
+            messagebox.showerror("Error", "Selected directory does not exist.", parent=self.window)
+            return
+
         selected_count = len(self.selected_rows)
-        logger.info(f"Moving {selected_count} selected images")
-        messagebox.showinfo("Move Selected", f"Would move {selected_count} selected images")
+        logger.info(f"Moving {selected_count} selected images to {dest_path}")
+
+        moved_files = []
+        failed_files = []
+
+        # Get selected row data
+        selected_indices = [int(row_id) for row_id in self.selected_rows if row_id.isdigit()]
+
+        for row_idx in selected_indices:
+            if row_idx in self.current_page_data.index:
+                row_data = self.current_page_data.loc[row_idx]
+                file_path = Path(row_data.get('Path', ''))
+
+                if file_path.exists():
+                    dest_file = dest_path / file_path.name
+
+                    try:
+                        # Handle name conflicts
+                        counter = 1
+                        while dest_file.exists():
+                            stem = file_path.stem
+                            suffix = file_path.suffix
+                            dest_file = dest_path / f"{stem}_{counter}{suffix}"
+                            counter += 1
+
+                        file_path.rename(dest_file)
+                        moved_files.append(str(dest_file))
+                        logger.info(f"Moved file: {file_path} -> {dest_file}")
+
+                    except Exception as e:
+                        failed_files.append(f"{file_path.name}: {e}")
+                        logger.error(f"Failed to move {file_path}: {e}")
+
+        # Show results
+        if moved_files:
+            messagebox.showinfo(
+                "Move Complete",
+                f"Successfully moved {len(moved_files)} file(s) to:\n{dest_path}",
+                parent=self.window
+            )
+
+        if failed_files:
+            messagebox.showerror(
+                "Move Errors",
+                f"Failed to move {len(failed_files)} file(s):\n\n" +
+                "\n".join(failed_files[:5]) +
+                (f"\n... and {len(failed_files) - 5} more" if len(failed_files) > 5 else ""),
+                parent=self.window
+            )
+
+        # Refresh the data and clear selections
+        self.selected_rows.clear()
+        self.refresh_data()
     
     def delete_selected(self):
         """Delete selected images."""
         if not self.selected_rows:
             return
-        
+
         selected_count = len(self.selected_rows)
         result = messagebox.askyesno(
             "Confirm Deletion",
             f"Are you sure you want to delete {selected_count} selected image(s)?\n\n"
             f"This action cannot be undone."
         )
-        
+
         if result:
             logger.info(f"Deleting {selected_count} selected images")
-            messagebox.showinfo("Delete Selected", f"Would delete {selected_count} selected images")
+
+            deleted_files = []
+            failed_files = []
+
+            # Get selected row data
+            selected_indices = [int(row_id) for row_id in self.selected_rows if row_id.isdigit()]
+
+            for row_idx in selected_indices:
+                if row_idx in self.current_page_data.index:
+                    row_data = self.current_page_data.loc[row_idx]
+                    file_path = row_data.get('Path', '')
+
+                    if file_path:
+                        try:
+                            Path(file_path).unlink()
+                            deleted_files.append(file_path)
+                            logger.info(f"Deleted file: {file_path}")
+                        except Exception as e:
+                            failed_files.append(f"{Path(file_path).name}: {e}")
+                            logger.error(f"Failed to delete {file_path}: {e}")
+
+            # Show results
+            if deleted_files:
+                messagebox.showinfo(
+                    "Deletion Complete",
+                    f"Successfully deleted {len(deleted_files)} file(s)."
+                )
+
+            if failed_files:
+                messagebox.showerror(
+                    "Deletion Errors",
+                    f"Failed to delete {len(failed_files)} file(s):\n\n" +
+                    "\n".join(failed_files[:5]) +  # Show first 5 errors
+                    (f"\n... and {len(failed_files) - 5} more" if len(failed_files) > 5 else "")
+                )
+
+            # Refresh the data and clear selections
+            self.selected_rows.clear()
+            self.refresh_data()
     
     def close(self):
         """Close the list screen."""

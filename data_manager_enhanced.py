@@ -82,7 +82,19 @@ class DataManager:
         
         logger.info(f"CSV processing complete: {len(self.groups)} groups, {len(self.missing_files)} missing files")
         return True
-    
+
+    def has_data(self) -> bool:
+        """Check if any data has been loaded."""
+        if self.use_database and self.db_manager:
+            try:
+                group_list = self.db_manager.get_group_list()
+                return len(group_list) > 0
+            except Exception as e:
+                logger.error(f"Error checking database data: {e}")
+                return False
+        else:
+            return self.df is not None and not self.df.empty
+
     def _update_legacy_attributes(self):
         """Update legacy attributes from database for backward compatibility."""
         if not self.db_manager:
