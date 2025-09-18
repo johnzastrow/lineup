@@ -242,7 +242,8 @@ class DataManager:
         """Get photos for a specific group."""
         if self.use_database and self.db_manager:
             try:
-                db_df = self.db_manager.get_group_images(group_id)
+                # Get only active images for the group
+                db_df = self.db_manager.get_active_images(group_id)
                 if not db_df.empty:
                     return self._convert_to_legacy_format(db_df)
                 return pd.DataFrame()

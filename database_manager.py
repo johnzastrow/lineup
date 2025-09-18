@@ -34,6 +34,9 @@ class DatabaseManager:
             # Create tables if they don't exist
             self._create_tables()
 
+            # Run database migrations
+            self._run_migrations()
+
             return self.connection
         except Exception as e:
             logger.error(f"Failed to connect to database: {e}", exc_info=True)
@@ -96,6 +99,7 @@ class DatabaseManager:
                     similarity_score REAL,
                     match_reasons TEXT,
                     file_exists BOOLEAN DEFAULT TRUE,
+                    status TEXT DEFAULT 'active',
                     FOREIGN KEY (group_id) REFERENCES groups(group_id)
                 )
             """)
@@ -111,17 +115,47 @@ class DatabaseManager:
                 "CREATE INDEX IF NOT EXISTS idx_camera_model ON images(camera_model)",
                 "CREATE INDEX IF NOT EXISTS idx_file_exists ON images(file_exists)",
                 "CREATE INDEX IF NOT EXISTS idx_size_bytes ON images(size_bytes)",
-                "CREATE INDEX IF NOT EXISTS idx_dimensions ON images(width, height)"
+                "CREATE INDEX IF NOT EXISTS idx_dimensions ON images(width, height)",
+                "CREATE INDEX IF NOT EXISTS idx_status ON images(status)"
             ]
             
             for index_sql in indexes:
-                cursor.execute(index_sql)
-            
+                try:
+                    cursor.execute(index_sql)
+                except sqlite3.OperationalError as e:
+                    if "no such column" in str(e).lower():
+                        logger.warning(f"Skipping index creation (will be handled by migration): {e}")
+                    else:
+                        raise
+
             self.connection.commit()
             logger.info("Database schema created successfully")
             
         except Exception as e:
             logger.error(f"Failed to create database schema: {e}", exc_info=True)
+            raise
+
+    def _run_migrations(self):
+        """Run database migrations to update schema."""
+        try:
+            cursor = self.connection.cursor()
+
+            # Check if status column exists
+            cursor.execute("PRAGMA table_info(images)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if 'status' not in columns:
+                logger.info("Running migration: Adding status column to images table")
+                cursor.execute("ALTER TABLE images ADD COLUMN status TEXT DEFAULT 'active'")
+
+                # Create the status index now that the column exists
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_status ON images(status)")
+
+                self.connection.commit()
+                logger.info("Migration completed: status column added")
+
+        except Exception as e:
+            logger.error(f"Failed to run migrations: {e}", exc_info=True)
             raise
     
     def import_csv_data(self, csv_file_path: str) -> bool:
@@ -183,7 +217,7 @@ class DatabaseManager:
                     row.get('CameraMake'), row.get('CameraModel'), row.get('date_taken'),
                     row.get('QualityScore'), row.get('IPTCKeywords'), row.get('IPTCCaption'),
                     row.get('XMPKeywords'), row.get('XMPTitle'), row.get('SimilarityScore'),
-                    row.get('MatchReasons'), row['file_exists']
+                    row.get('MatchReasons'), row['file_exists'], 'active'
                 ))
             except Exception as e:
                 logger.warning(f"Failed to prepare image row: {e}")
@@ -198,8 +232,8 @@ class DatabaseManager:
                     file_type, camera_make, camera_model, date_taken,
                     quality_score, iptc_keywords, iptc_caption,
                     xmp_keywords, xmp_title, similarity_score, match_reasons,
-                    file_exists
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    file_exists, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, insert_data)
 
             images_inserted = len(insert_data)
@@ -218,8 +252,8 @@ class DatabaseManager:
                             file_type, camera_make, camera_model, date_taken,
                             quality_score, iptc_keywords, iptc_caption,
                             xmp_keywords, xmp_title, similarity_score, match_reasons,
-                            file_exists
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            file_exists, status
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, data)
                     images_inserted += 1
                 except Exception as e2:
@@ -450,12 +484,81 @@ class DatabaseManager:
 
         self.connection.commit()
         logger.info(f"Validated {updates} file paths")
-    
+
+    def update_record_status(self, file_path: str, new_status: str):
+        """Update the status of a record by file path."""
+        self.ensure_connection()
+        cursor = self.connection.cursor()
+
+        cursor.execute("""
+            UPDATE images SET status = ? WHERE path = ?
+        """, (new_status, file_path))
+
+        affected_rows = cursor.rowcount
+        self.connection.commit()
+        logger.debug(f"Updated status to '{new_status}' for {affected_rows} record(s) with path: {file_path}")
+        return affected_rows
+
+    def update_record_status_by_id(self, record_id: int, new_status: str):
+        """Update the status of a record by ID."""
+        self.ensure_connection()
+        cursor = self.connection.cursor()
+
+        cursor.execute("""
+            UPDATE images SET status = ? WHERE id = ?
+        """, (new_status, record_id))
+
+        affected_rows = cursor.rowcount
+        self.connection.commit()
+        logger.debug(f"Updated status to '{new_status}' for record ID: {record_id}")
+        return affected_rows
+
+    def update_multiple_record_status(self, file_paths: list, new_status: str):
+        """Update the status of multiple records by file paths."""
+        self.ensure_connection()
+        cursor = self.connection.cursor()
+
+        # Use batch update for efficiency
+        update_data = [(new_status, path) for path in file_paths]
+        cursor.executemany("""
+            UPDATE images SET status = ? WHERE path = ?
+        """, update_data)
+
+        affected_rows = cursor.rowcount
+        self.connection.commit()
+        logger.info(f"Updated status to '{new_status}' for {affected_rows} record(s)")
+        return affected_rows
+
+    def get_active_images(self, group_id: str = None) -> pd.DataFrame:
+        """Get all active images, optionally filtered by group."""
+        self.ensure_connection()
+        cursor = self.connection.cursor()
+
+        if group_id:
+            cursor.execute("""
+                SELECT * FROM images WHERE group_id = ? AND status = 'active'
+                ORDER BY is_master DESC, quality_score DESC
+            """, (group_id,))
+        else:
+            cursor.execute("""
+                SELECT * FROM images WHERE status = 'active'
+                ORDER BY group_id, is_master DESC, quality_score DESC
+            """)
+
+        rows = cursor.fetchall()
+        if not rows:
+            return pd.DataFrame()
+
+        # Convert to DataFrame
+        columns = [col[0] for col in cursor.description]
+        data = [dict(row) for row in rows]
+        return pd.DataFrame(data, columns=columns)
+
     def __enter__(self):
         """Context manager entry."""
         self.connect()
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
         self.disconnect()

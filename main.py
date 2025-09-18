@@ -57,6 +57,7 @@ class LineupApp:
         self.data_manager = DataManager()
         self.image_manager = ImageManager()
         self.current_csv_file = None  # Track current CSV file for reload
+        self.current_database_file = None  # Track current database file
         self.current_group = None
         self.selected_images = set()
         self.image_widgets = []
@@ -89,6 +90,20 @@ class LineupApp:
         )
         self.load_btn.pack(side="left", padx=5)
         
+        # Database menu
+        self.database_menu = ctk.CTkOptionMenu(
+            self.toolbar,
+            values=["Load Database...", "Browse for Database..."],
+            command=self.handle_database_selection,
+            width=140
+        )
+        self.database_menu.pack(side="left", padx=5)
+        self.database_menu.set("Load Database...")
+
+        # Initialize recent databases
+        self.recent_databases = []
+        self.load_recent_databases()
+
         # Reload button
         self.reload_btn = ctk.CTkButton(
             self.toolbar,
@@ -338,7 +353,289 @@ class LineupApp:
         except Exception as e:
             logger.error(f"Error reloading CSV file: {e}", exc_info=True)
             messagebox.showerror("Reload Error", f"Failed to reload CSV file:\n{str(e)}")
-    
+
+    def load_database_file(self):
+        """Load a previously created database file to resume work."""
+        from tkinter import filedialog
+
+        try:
+            logger.info("User requested to load database file")
+
+            # Select database file
+            db_file = filedialog.askopenfilename(
+                title="Select Lineup Database",
+                filetypes=[
+                    ("Lineup Database", "*.db"),
+                    ("SQLite Database", "*.sqlite"),
+                    ("All files", "*.*")
+                ],
+                defaultextension=".db"
+            )
+
+            if db_file:
+                logger.info(f"Loading database file: {db_file}")
+
+                # Close any active image viewers
+                for viewer in self.active_image_viewers.copy():
+                    if hasattr(viewer, 'window') and viewer.window.winfo_exists():
+                        viewer.close()
+                self.active_image_viewers.clear()
+
+                # Clear current data
+                self.clear_current_data()
+
+                # Initialize data manager with the selected database
+                self.data_manager = DataManager(use_database=True)
+
+                # Update the database manager to use the selected file
+                if self.data_manager.db_manager:
+                    # Disconnect from current database
+                    self.data_manager.db_manager.disconnect()
+
+                    # Update database path and reconnect
+                    self.data_manager.db_manager.db_path = Path(db_file)
+                    self.data_manager.db_manager.connect()
+
+                    # Update legacy attributes for backward compatibility
+                    self.data_manager._update_legacy_attributes()
+
+                    # Check if database has data
+                    if self.data_manager.has_data():
+                        # Get database summary
+                        summary = self.data_manager.get_overall_summary()
+
+                        # Update UI state
+                        self.current_csv_file = None  # No CSV file, using database
+                        self.current_database_file = db_file
+
+                        # Add to recent databases
+                        self.add_to_recent_databases(db_file)
+
+                        # Enable controls
+                        self.views_menu.configure(state="normal")
+                        self.auto_select_switch.configure(state="normal")
+                        self.hide_single_switch.configure(state="normal")
+
+                        # Update status
+                        self.status_label.configure(
+                            text=f"Database: {Path(db_file).name} - {summary.get('total_groups', 0)} groups, "
+                                 f"{summary.get('total_images', 0)} images"
+                        )
+
+                        # Load first group
+                        groups = self.data_manager.get_group_list()
+                        if groups:
+                            self.current_group = groups[0]
+                            self.load_group(self.current_group)
+                            self.show_operation_status(f"Database loaded successfully", "green")
+
+                            # Show summary with any missing files
+                            if summary.get('missing_images', 0) > 0:
+                                messagebox.showwarning(
+                                    "Missing Files",
+                                    f"Database loaded successfully!\n\n"
+                                    f"Total groups: {summary['total_groups']}\n"
+                                    f"Total images: {summary['total_images']}\n\n"
+                                    f"Warning: {summary['missing_images']} image files could not be found.\n"
+                                    f"These will be filtered out from the display."
+                                )
+                            else:
+                                messagebox.showinfo(
+                                    "Database Loaded",
+                                    f"Database loaded successfully!\n\n"
+                                    f"Total groups: {summary['total_groups']}\n"
+                                    f"Total images: {summary['total_images']}"
+                                )
+                        else:
+                            messagebox.showwarning("Empty Database", "The selected database contains no image groups.")
+                            self.status_label.configure(text="Database loaded but contains no data")
+                    else:
+                        messagebox.showerror("Invalid Database",
+                                           "The selected database appears to be empty or invalid.")
+                        self.status_label.configure(text="Failed to load database")
+                else:
+                    messagebox.showerror("Database Error", "Failed to initialize database manager.")
+
+            else:
+                logger.debug("Database file selection cancelled by user")
+
+        except Exception as e:
+            logger.error(f"Error loading database file: {e}", exc_info=True)
+            messagebox.showerror("Database Error", f"Failed to load database file:\n{str(e)}")
+            self.status_label.configure(text="Failed to load database")
+
+    def clear_current_data(self):
+        """Clear current data and reset UI state."""
+        self.current_group = None
+        self.selected_images.clear()
+        self.image_widgets.clear()
+
+        # Clear the image display area
+        for widget in self.image_scroll_frame.winfo_children():
+            widget.destroy()
+
+        # Reset UI state
+        self.views_menu.configure(state="disabled")
+        self.reload_btn.configure(state="disabled")
+        self.auto_select_switch.configure(state="disabled")
+        self.hide_single_switch.configure(state="disabled")
+
+    def handle_database_selection(self, selection):
+        """Handle database menu selection."""
+        if selection == "Browse for Database...":
+            self.load_database_file()
+        elif selection.endswith(".db") or selection.endswith(".sqlite"):
+            # Direct database file selection
+            self.load_specific_database(selection)
+
+        # Reset menu to default
+        self.database_menu.set("Load Database...")
+
+    def load_recent_databases(self):
+        """Load the list of recent databases."""
+        try:
+            recent_file = Path.home() / ".lineup_recent_databases.txt"
+            if recent_file.exists():
+                with open(recent_file, 'r') as f:
+                    self.recent_databases = [line.strip() for line in f.readlines() if line.strip()]
+                    # Keep only existing files
+                    self.recent_databases = [db for db in self.recent_databases if Path(db).exists()]
+                    # Limit to 5 most recent
+                    self.recent_databases = self.recent_databases[:5]
+
+                self.update_database_menu()
+        except Exception as e:
+            logger.warning(f"Failed to load recent databases: {e}")
+
+    def save_recent_databases(self):
+        """Save the list of recent databases."""
+        try:
+            recent_file = Path.home() / ".lineup_recent_databases.txt"
+            with open(recent_file, 'w') as f:
+                for db in self.recent_databases:
+                    f.write(f"{db}\n")
+        except Exception as e:
+            logger.warning(f"Failed to save recent databases: {e}")
+
+    def add_to_recent_databases(self, db_path):
+        """Add a database to the recent list."""
+        db_path = str(Path(db_path).resolve())
+
+        # Remove if already in list
+        if db_path in self.recent_databases:
+            self.recent_databases.remove(db_path)
+
+        # Add to front
+        self.recent_databases.insert(0, db_path)
+
+        # Keep only 5 most recent
+        self.recent_databases = self.recent_databases[:5]
+
+        # Update UI and save
+        self.update_database_menu()
+        self.save_recent_databases()
+
+    def update_database_menu(self):
+        """Update the database menu with recent databases."""
+        menu_items = ["Load Database...", "Browse for Database..."]
+
+        if self.recent_databases:
+            menu_items.append("──────────────")  # Separator
+            for db_path in self.recent_databases:
+                display_name = Path(db_path).name
+                if len(display_name) > 25:
+                    display_name = display_name[:22] + "..."
+                menu_items.append(display_name)
+
+        self.database_menu.configure(values=menu_items)
+
+    def load_specific_database(self, db_name):
+        """Load a specific database from the recent list."""
+        # Find the full path
+        full_path = None
+        for db_path in self.recent_databases:
+            if Path(db_path).name == db_name or db_name in db_path:
+                full_path = db_path
+                break
+
+        if full_path and Path(full_path).exists():
+            self.load_database_file_direct(full_path)
+        else:
+            messagebox.showerror("Database Not Found", f"The database '{db_name}' could not be found.")
+
+    def load_database_file_direct(self, db_file):
+        """Load a database file directly without file dialog."""
+        try:
+            logger.info(f"Loading database file directly: {db_file}")
+
+            # Close any active image viewers
+            for viewer in self.active_image_viewers.copy():
+                if hasattr(viewer, 'window') and viewer.window.winfo_exists():
+                    viewer.close()
+            self.active_image_viewers.clear()
+
+            # Clear current data
+            self.clear_current_data()
+
+            # Initialize data manager with the selected database
+            self.data_manager = DataManager(use_database=True)
+
+            # Update the database manager to use the selected file
+            if self.data_manager.db_manager:
+                # Disconnect from current database
+                self.data_manager.db_manager.disconnect()
+
+                # Update database path and reconnect
+                self.data_manager.db_manager.db_path = Path(db_file)
+                self.data_manager.db_manager.connect()
+
+                # Update legacy attributes for backward compatibility
+                self.data_manager._update_legacy_attributes()
+
+                # Check if database has data
+                if self.data_manager.has_data():
+                    # Get database summary
+                    summary = self.data_manager.get_overall_summary()
+
+                    # Update UI state
+                    self.current_csv_file = None  # No CSV file, using database
+                    self.current_database_file = db_file
+
+                    # Add to recent databases
+                    self.add_to_recent_databases(db_file)
+
+                    # Enable controls
+                    self.views_menu.configure(state="normal")
+                    self.auto_select_switch.configure(state="normal")
+                    self.hide_single_switch.configure(state="normal")
+
+                    # Update status
+                    self.status_label.configure(
+                        text=f"Database: {Path(db_file).name} - {summary.get('total_groups', 0)} groups, "
+                             f"{summary.get('total_images', 0)} images"
+                    )
+
+                    # Load first group
+                    groups = self.data_manager.get_group_list()
+                    if groups:
+                        self.current_group = groups[0]
+                        self.load_group(self.current_group)
+                        self.show_operation_status(f"Database loaded successfully", "green")
+                    else:
+                        messagebox.showwarning("Empty Database", "The selected database contains no image groups.")
+                        self.status_label.configure(text="Database loaded but contains no data")
+                else:
+                    messagebox.showerror("Invalid Database",
+                                       "The selected database appears to be empty or invalid.")
+                    self.status_label.configure(text="Failed to load database")
+            else:
+                messagebox.showerror("Database Error", "Failed to initialize database manager.")
+
+        except Exception as e:
+            logger.error(f"Error loading database file: {e}", exc_info=True)
+            messagebox.showerror("Database Error", f"Failed to load database file:\n{str(e)}")
+            self.status_label.configure(text="Failed to load database")
+
     def open_list_view(self):
         """Open the advanced list view screen."""
         try:

@@ -425,23 +425,48 @@ class ListScreen:
             messagebox.showerror("Error", f"Failed to refresh data:\n{str(e)}")
     
     def get_all_data(self) -> pd.DataFrame:
-        """Get all data from the data manager."""
+        """Get all data from the data manager, filtering out deleted files."""
         try:
             all_data = []
-            
+
             # Get data from each group
             for group_id in self.data_manager.get_group_list():
                 group_data = self.data_manager.get_group(group_id)
                 if not group_data.empty:
                     all_data.append(group_data)
-            
+
             if all_data:
                 combined_data = pd.concat(all_data, ignore_index=True)
                 logger.debug(f"Retrieved {len(combined_data)} total records from {len(all_data)} groups")
-                return combined_data
+
+                # Filter to only show active records (not deleted or moved)
+                if 'status' in combined_data.columns:
+                    # Use status column to filter for active records
+                    active_files = combined_data[combined_data['status'] == 'active']
+                    logger.debug(f"Filtered to {len(active_files)} active records")
+                    return active_files
+                elif 'FileExists' in combined_data.columns:
+                    # Fallback: Use existing FileExists column if available
+                    existing_files = combined_data[combined_data['FileExists'] == True]
+                    logger.debug(f"Filtered to {len(existing_files)} existing files")
+                    return existing_files
+                elif 'Path' in combined_data.columns:
+                    # Fallback: Check file existence manually if FileExists column is missing
+                    def file_exists(path):
+                        if pd.isna(path) or not path:
+                            return False
+                        return Path(path).exists()
+
+                    existing_mask = combined_data['Path'].apply(file_exists)
+                    existing_files = combined_data[existing_mask]
+                    logger.debug(f"Manually checked and filtered to {len(existing_files)} existing files")
+                    return existing_files
+                else:
+                    # No filtering information available, return all data
+                    return combined_data
             else:
                 return pd.DataFrame()
-                
+
         except Exception as e:
             logger.error(f"Error getting all data: {e}", exc_info=True)
             return pd.DataFrame()
@@ -791,14 +816,160 @@ class ListScreen:
                 row_idx = int(item)
                 if row_idx in self.current_page_data.index:
                     row_data = self.current_page_data.loc[row_idx]
-                    
-                    # Create a temporary image widget for the viewer
-                    # This would integrate with the existing ImageViewerWindow
-                    logger.info(f"Opening image viewer for {row_data.get('Path', 'Unknown')}")
-                    messagebox.showinfo("Image Viewer", f"Would open image viewer for:\n{row_data.get('Path', 'Unknown')}")
-        
+                    file_path = row_data.get('Path', '')
+
+                    if file_path and Path(file_path).exists():
+                        logger.info(f"Opening image viewer for {file_path}")
+
+                        # Create a simple image viewer window
+                        self.create_simple_image_viewer(file_path)
+                    else:
+                        messagebox.showerror(
+                            "File Not Found",
+                            f"Image file not found:\n{file_path}",
+                            parent=self.window
+                        )
+
         except Exception as e:
             logger.error(f"Error opening image viewer: {e}", exc_info=True)
+            messagebox.showerror(
+                "Error",
+                f"Failed to open image viewer:\n{str(e)}",
+                parent=self.window
+            )
+
+    def create_simple_image_viewer(self, file_path: str):
+        """Create a simple image viewer window."""
+        try:
+            # Create viewer window
+            viewer_window = ctk.CTkToplevel(self.window)
+            viewer_window.title(f"Image Viewer - {Path(file_path).name}")
+            viewer_window.geometry("800x600")
+            viewer_window.minsize(400, 300)
+
+            # Make it modal
+            viewer_window.transient(self.window)
+            viewer_window.grab_set()
+
+            # Center the window
+            viewer_window.update_idletasks()
+            x = (viewer_window.winfo_screenwidth() // 2) - (800 // 2)
+            y = (viewer_window.winfo_screenheight() // 2) - (600 // 2)
+            viewer_window.geometry(f"800x600+{x}+{y}")
+
+            # Create main frame
+            main_frame = ctk.CTkFrame(viewer_window)
+            main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+            # File info bar
+            info_frame = ctk.CTkFrame(main_frame)
+            info_frame.pack(fill="x", padx=5, pady=5)
+
+            file_name_label = ctk.CTkLabel(
+                info_frame,
+                text=Path(file_path).name,
+                font=ctk.CTkFont(size=14, weight="bold")
+            )
+            file_name_label.pack(side="left", padx=10, pady=5)
+
+            file_path_label = ctk.CTkLabel(
+                info_frame,
+                text=file_path,
+                font=ctk.CTkFont(size=10),
+                text_color="gray"
+            )
+            file_path_label.pack(side="left", padx=10, pady=5)
+
+            # Close button
+            close_btn = ctk.CTkButton(
+                info_frame,
+                text="Close (Esc)",
+                command=viewer_window.destroy,
+                width=100
+            )
+            close_btn.pack(side="right", padx=10, pady=5)
+
+            # Image display frame
+            image_frame = ctk.CTkFrame(main_frame)
+            image_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+            # Load and display image
+            self.load_image_in_viewer(image_frame, file_path)
+
+            # Bind ESC key to close
+            viewer_window.bind("<Escape>", lambda e: viewer_window.destroy())
+            viewer_window.focus_set()
+
+        except Exception as e:
+            logger.error(f"Error creating image viewer: {e}", exc_info=True)
+            messagebox.showerror(
+                "Error",
+                f"Failed to create image viewer:\n{str(e)}",
+                parent=self.window
+            )
+
+    def load_image_in_viewer(self, parent_frame, file_path: str):
+        """Load and display an image in the viewer."""
+        try:
+            # Open image with PIL
+            with Image.open(file_path) as image:
+                # Convert to RGB if necessary
+                if image.mode in ('RGBA', 'LA', 'P'):
+                    image = image.convert('RGB')
+
+                # Get display area size
+                parent_frame.update_idletasks()
+                max_width = parent_frame.winfo_width() - 20
+                max_height = parent_frame.winfo_height() - 20
+
+                if max_width <= 1 or max_height <= 1:
+                    max_width = 750
+                    max_height = 500
+
+                # Calculate size to fit while maintaining aspect ratio
+                img_width, img_height = image.size
+                scale_width = max_width / img_width
+                scale_height = max_height / img_height
+                scale = min(scale_width, scale_height)
+
+                new_width = int(img_width * scale)
+                new_height = int(img_height * scale)
+
+                # Resize image
+                resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+                # Create PhotoImage and display
+                photo_image = ImageTk.PhotoImage(resized_image)
+
+                # Create label to display image
+                image_label = ctk.CTkLabel(
+                    parent_frame,
+                    image=photo_image,
+                    text=""
+                )
+                image_label.pack(expand=True, fill="both")
+
+                # Keep reference to prevent garbage collection
+                image_label.image = photo_image
+
+                # Add image info
+                info_text = f"Dimensions: {img_width} × {img_height} pixels"
+                info_label = ctk.CTkLabel(
+                    parent_frame,
+                    text=info_text,
+                    font=ctk.CTkFont(size=10),
+                    text_color="gray"
+                )
+                info_label.pack(pady=5)
+
+        except Exception as e:
+            logger.error(f"Error loading image {file_path}: {e}", exc_info=True)
+            error_label = ctk.CTkLabel(
+                parent_frame,
+                text=f"❌ Error Loading Image\n\n{str(e)}",
+                font=ctk.CTkFont(size=14)
+            )
+            error_label.pack(expand=True, fill="both")
     
     # Navigation methods
     def go_to_first_page(self):
@@ -906,6 +1077,10 @@ class ListScreen:
                         moved_files.append(str(dest_file))
                         logger.info(f"Moved file: {file_path} -> {dest_file}")
 
+                        # Update database record status to 'moved'
+                        if self.data_manager.use_database and self.data_manager.db_manager:
+                            self.data_manager.db_manager.update_record_status(str(file_path), 'moved')
+
                     except Exception as e:
                         failed_files.append(f"{file_path.name}: {e}")
                         logger.error(f"Failed to move {file_path}: {e}")
@@ -962,6 +1137,11 @@ class ListScreen:
                             Path(file_path).unlink()
                             deleted_files.append(file_path)
                             logger.info(f"Deleted file: {file_path}")
+
+                            # Update database record status to 'deleted'
+                            if self.data_manager.use_database and self.data_manager.db_manager:
+                                self.data_manager.db_manager.update_record_status(file_path, 'deleted')
+
                         except Exception as e:
                             failed_files.append(f"{Path(file_path).name}: {e}")
                             logger.error(f"Failed to delete {file_path}: {e}")
