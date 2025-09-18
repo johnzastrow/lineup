@@ -379,8 +379,8 @@ class ImageViewerWindow:
         # Create window
         self.window = ctk.CTkToplevel(parent)
         self.window.title("Image Viewer")
-        self.window.geometry("1200x900")  # Increased from 800x600 to better use screen space
-        self.window.minsize(600, 450)  # Increased minimum size
+        self.window.geometry("1000x750")  # Sized to fit 1920x1080 screens comfortably
+        self.window.minsize(600, 450)
         
         # Make window modal
         self.window.transient(parent)
@@ -394,23 +394,41 @@ class ImageViewerWindow:
         self.load_current_image()
     
     def center_window(self):
-        """Center the window on the parent."""
+        """Center the window on the parent and ensure it fits on screen."""
         self.window.update_idletasks()
-        
+
+        # Get screen dimensions
+        screen_width = self.window.winfo_screenwidth()
+        screen_height = self.window.winfo_screenheight()
+
         # Get parent window position and size
         parent_x = self.parent.winfo_x()
         parent_y = self.parent.winfo_y()
         parent_width = self.parent.winfo_width()
         parent_height = self.parent.winfo_height()
-        
+
         # Get this window size
         window_width = self.window.winfo_width()
         window_height = self.window.winfo_height()
-        
+
+        # Adjust window size if it's too large for the screen
+        max_width = int(screen_width * 0.9)  # Use 90% of screen width
+        max_height = int(screen_height * 0.85)  # Use 85% of screen height (leave room for taskbar)
+
+        if window_width > max_width or window_height > max_height:
+            window_width = min(window_width, max_width)
+            window_height = min(window_height, max_height)
+            self.window.geometry(f"{window_width}x{window_height}")
+            self.window.update_idletasks()
+
         # Calculate center position
         x = parent_x + (parent_width - window_width) // 2
         y = parent_y + (parent_height - window_height) // 2
-        
+
+        # Ensure window doesn't go off screen
+        x = max(0, min(x, screen_width - window_width))
+        y = max(0, min(y, screen_height - window_height))
+
         self.window.geometry(f"{window_width}x{window_height}+{x}+{y}")
     
     def setup_ui(self):

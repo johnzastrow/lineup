@@ -44,16 +44,15 @@ class DataManager:
     def _load_csv_with_database(self, file_path: str) -> bool:
         """Load CSV using SQLite database backend."""
         try:
-            # Connect to database and import data
-            with self.db_manager as db:
-                db.import_csv_data(file_path)
-                
-                # Update legacy attributes for backward compatibility
-                self._update_legacy_attributes()
-            
+            # Import data using persistent connection
+            self.db_manager.import_csv_data(file_path)
+
+            # Update legacy attributes for backward compatibility
+            self._update_legacy_attributes()
+
             logger.info("CSV loaded successfully using database backend")
             return True
-            
+
         except Exception as e:
             logger.error(f"Error loading CSV with database: {e}", exc_info=True)
             raise
@@ -88,27 +87,26 @@ class DataManager:
         """Update legacy attributes from database for backward compatibility."""
         if not self.db_manager:
             return
-        
-        with self.db_manager as db:
-            # Get group list
-            self.group_ids = db.get_group_list()
-            
-            # Build groups dictionary
-            self.groups = {}
-            self.missing_files = set()
-            
-            for group_id in self.group_ids:
-                group_df = db.get_group_images(group_id)
-                if not group_df.empty:
-                    # Convert database format to legacy format
-                    legacy_df = self._convert_to_legacy_format(group_df)
-                    self.groups[group_id] = legacy_df
-                    
-                    # Track missing files
-                    missing_mask = group_df['file_exists'] == False
-                    if missing_mask.any():
-                        missing_in_group = group_df.loc[missing_mask, 'path'].tolist()
-                        self.missing_files.update(missing_in_group)
+
+        # Get group list using persistent connection
+        self.group_ids = self.db_manager.get_group_list()
+
+        # Build groups dictionary
+        self.groups = {}
+        self.missing_files = set()
+
+        for group_id in self.group_ids:
+            group_df = self.db_manager.get_group_images(group_id)
+            if not group_df.empty:
+                # Convert database format to legacy format
+                legacy_df = self._convert_to_legacy_format(group_df)
+                self.groups[group_id] = legacy_df
+
+                # Track missing files
+                missing_mask = group_df['file_exists'] == False
+                if missing_mask.any():
+                    missing_in_group = group_df.loc[missing_mask, 'path'].tolist()
+                    self.missing_files.update(missing_in_group)
     
     def _convert_to_legacy_format(self, db_df: pd.DataFrame) -> pd.DataFrame:
         """Convert database DataFrame to legacy format for compatibility."""
@@ -232,23 +230,21 @@ class DataManager:
         """Get photos for a specific group."""
         if self.use_database and self.db_manager:
             try:
-                with self.db_manager as db:
-                    db_df = db.get_group_images(group_id)
-                    if not db_df.empty:
-                        return self._convert_to_legacy_format(db_df)
+                db_df = self.db_manager.get_group_images(group_id)
+                if not db_df.empty:
+                    return self._convert_to_legacy_format(db_df)
                 return pd.DataFrame()
             except Exception as e:
                 logger.error(f"Error getting group from database: {e}")
                 return pd.DataFrame()
         else:
             return self.groups.get(group_id)
-    
+
     def get_group_list(self) -> List[str]:
         """Get list of all group IDs."""
         if self.use_database and self.db_manager:
             try:
-                with self.db_manager as db:
-                    return db.get_group_list()
+                return self.db_manager.get_group_list()
             except Exception as e:
                 logger.error(f"Error getting group list from database: {e}")
                 return []
@@ -259,8 +255,7 @@ class DataManager:
         """Get summary information for a group."""
         if self.use_database and self.db_manager:
             try:
-                with self.db_manager as db:
-                    return db.get_group_summary(group_id)
+                return self.db_manager.get_group_summary(group_id)
             except Exception as e:
                 logger.error(f"Error getting group summary from database: {e}")
                 return {}
@@ -268,9 +263,9 @@ class DataManager:
             # Legacy implementation
             if group_id not in self.groups:
                 return {}
-            
+
             group_df = self.groups[group_id]
-            
+
             return {
                 'group_id': group_id,
                 'total_images': len(group_df),
@@ -280,13 +275,12 @@ class DataManager:
                 'has_master': bool(group_df['IsMaster'].any()),
                 'match_reasons': group_df['MatchReasons'].iloc[0] if len(group_df) > 0 else ""
             }
-    
+
     def get_overall_summary(self) -> Dict[str, Any]:
         """Get overall summary of all data."""
         if self.use_database and self.db_manager:
             try:
-                with self.db_manager as db:
-                    return db.get_overall_summary()
+                return self.db_manager.get_overall_summary()
             except Exception as e:
                 logger.error(f"Error getting overall summary from database: {e}")
                 return {}
@@ -294,7 +288,7 @@ class DataManager:
             # Legacy implementation
             if self.df is None:
                 return {}
-            
+
             return {
                 'total_groups': len(self.groups),
                 'total_images': len(self.df),
@@ -307,10 +301,9 @@ class DataManager:
         """Re-validate all file paths and return list of missing files."""
         if self.use_database and self.db_manager:
             try:
-                with self.db_manager as db:
-                    db.validate_file_paths()
-                    # Update legacy attributes
-                    self._update_legacy_attributes()
+                self.db_manager.validate_file_paths()
+                # Update legacy attributes
+                self._update_legacy_attributes()
                 return list(self.missing_files)
             except Exception as e:
                 logger.error(f"Error validating file paths in database: {e}")
@@ -319,78 +312,78 @@ class DataManager:
             # Legacy implementation
             if self.df is None:
                 return []
-            
+
             self.missing_files.clear()
             self.df['FileExists'] = self.df['Path'].apply(self._check_file_exists)
-            
+
             return list(self.missing_files)
     
     def get_advanced_statistics(self) -> Dict[str, Any]:
         """Get advanced statistics using the rich database schema."""
         if not (self.use_database and self.db_manager):
             return {}
-        
+
         try:
-            with self.db_manager as db:
-                cursor = db.connection.cursor()
-                
-                stats = {}
-                
-                # Quality score distribution
-                cursor.execute("""
-                    SELECT 
-                        COUNT(*) as total_with_quality,
-                        AVG(quality_score) as avg_quality,
-                        MIN(quality_score) as min_quality,
-                        MAX(quality_score) as max_quality,
-                        COUNT(CASE WHEN quality_score < 5.0 THEN 1 END) as low_quality_count
-                    FROM images WHERE quality_score IS NOT NULL
-                """)
-                quality_stats = cursor.fetchone()
-                stats['quality'] = dict(quality_stats) if quality_stats else {}
-                
-                # Camera equipment stats
-                cursor.execute("""
-                    SELECT 
-                        camera_make,
-                        camera_model,
-                        COUNT(*) as count
-                    FROM images 
-                    WHERE camera_make IS NOT NULL AND camera_make != ''
-                    GROUP BY camera_make, camera_model
-                    ORDER BY count DESC
-                    LIMIT 10
-                """)
-                camera_stats = cursor.fetchall()
-                stats['cameras'] = [dict(row) for row in camera_stats]
-                
-                # File type distribution
-                cursor.execute("""
-                    SELECT 
-                        file_type,
-                        COUNT(*) as count
-                    FROM images 
-                    WHERE file_type IS NOT NULL AND file_type != ''
-                    GROUP BY file_type
-                    ORDER BY count DESC
-                """)
-                filetype_stats = cursor.fetchall()
-                stats['file_types'] = [dict(row) for row in filetype_stats]
-                
-                # Size statistics
-                cursor.execute("""
-                    SELECT 
-                        AVG(size_bytes) as avg_size,
-                        MIN(size_bytes) as min_size,
-                        MAX(size_bytes) as max_size,
-                        SUM(size_bytes) as total_size
-                    FROM images WHERE size_bytes IS NOT NULL
-                """)
-                size_stats = cursor.fetchone()
-                stats['size'] = dict(size_stats) if size_stats else {}
-                
-                return stats
-                
+            self.db_manager.ensure_connection()
+            cursor = self.db_manager.connection.cursor()
+
+            stats = {}
+
+            # Quality score distribution
+            cursor.execute("""
+                SELECT
+                    COUNT(*) as total_with_quality,
+                    AVG(quality_score) as avg_quality,
+                    MIN(quality_score) as min_quality,
+                    MAX(quality_score) as max_quality,
+                    COUNT(CASE WHEN quality_score < 5.0 THEN 1 END) as low_quality_count
+                FROM images WHERE quality_score IS NOT NULL
+            """)
+            quality_stats = cursor.fetchone()
+            stats['quality'] = dict(quality_stats) if quality_stats else {}
+
+            # Camera equipment stats
+            cursor.execute("""
+                SELECT
+                    camera_make,
+                    camera_model,
+                    COUNT(*) as count
+                FROM images
+                WHERE camera_make IS NOT NULL AND camera_make != ''
+                GROUP BY camera_make, camera_model
+                ORDER BY count DESC
+                LIMIT 10
+            """)
+            camera_stats = cursor.fetchall()
+            stats['cameras'] = [dict(row) for row in camera_stats]
+
+            # File type distribution
+            cursor.execute("""
+                SELECT
+                    file_type,
+                    COUNT(*) as count
+                FROM images
+                WHERE file_type IS NOT NULL AND file_type != ''
+                GROUP BY file_type
+                ORDER BY count DESC
+            """)
+            filetype_stats = cursor.fetchall()
+            stats['file_types'] = [dict(row) for row in filetype_stats]
+
+            # Size statistics
+            cursor.execute("""
+                SELECT
+                    AVG(size_bytes) as avg_size,
+                    MIN(size_bytes) as min_size,
+                    MAX(size_bytes) as max_size,
+                    SUM(size_bytes) as total_size
+                FROM images WHERE size_bytes IS NOT NULL
+            """)
+            size_stats = cursor.fetchone()
+            stats['size'] = dict(size_stats) if size_stats else {}
+
+            return stats
+
         except Exception as e:
             logger.error(f"Error getting advanced statistics: {e}")
             return {}

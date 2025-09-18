@@ -11,26 +11,38 @@ logger = logging.getLogger('lineup.database_manager')
 
 class DatabaseManager:
     """Handles SQLite database operations for photo duplicate management."""
-    
-    def __init__(self, db_path: str = ".lineup_cache.db"):
+
+    def __init__(self, db_path: str = ".lineup_cache.db", auto_connect: bool = True):
         self.db_path = Path(db_path)
         self.connection: Optional[sqlite3.Connection] = None
+        self.auto_connect = auto_connect
         logger.info(f"Database manager initialized with path: {self.db_path}")
+
+        if auto_connect:
+            self.connect()
     
     def connect(self) -> sqlite3.Connection:
         """Create or connect to the SQLite database."""
+        if self.connection is not None:
+            return self.connection
+
         try:
             self.connection = sqlite3.connect(str(self.db_path))
             self.connection.row_factory = sqlite3.Row  # Enable column access by name
             logger.debug(f"Connected to database: {self.db_path}")
-            
+
             # Create tables if they don't exist
             self._create_tables()
-            
+
             return self.connection
         except Exception as e:
             logger.error(f"Failed to connect to database: {e}", exc_info=True)
             raise
+
+    def ensure_connection(self):
+        """Ensure database connection is available."""
+        if self.connection is None:
+            self.connect()
     
     def disconnect(self):
         """Close the database connection."""
@@ -152,26 +164,18 @@ class DatabaseManager:
         logger.debug("Database cleared")
     
     def _process_and_insert_data(self, df: pd.DataFrame):
-        """Process CSV data and insert into database."""
+        """Process CSV data and insert into database with batch processing."""
+        self.ensure_connection()
         cursor = self.connection.cursor()
-        
+
         # Clean and process data
         df = self._clean_dataframe(df)
-        
-        # Insert images
-        images_inserted = 0
+
+        # Prepare batch data for insertion
+        insert_data = []
         for _, row in df.iterrows():
             try:
-                cursor.execute("""
-                    INSERT INTO images (
-                        group_id, algorithm, is_master, file, name, path,
-                        size_bytes, created_date, modified_date, width, height,
-                        file_type, camera_make, camera_model, date_taken,
-                        quality_score, iptc_keywords, iptc_caption,
-                        xmp_keywords, xmp_title, similarity_score, match_reasons,
-                        file_exists
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
+                insert_data.append((
                     row['GroupID'], row.get('Algorithm'),
                     row['is_master'], row.get('File'), row.get('Name'), row.get('Path'),
                     row.get('size_bytes'), row.get('created_date'), row.get('modified_date'),
@@ -181,16 +185,51 @@ class DatabaseManager:
                     row.get('XMPKeywords'), row.get('XMPTitle'), row.get('SimilarityScore'),
                     row.get('MatchReasons'), row['file_exists']
                 ))
-                images_inserted += 1
             except Exception as e:
-                logger.warning(f"Failed to insert image row: {e}")
+                logger.warning(f"Failed to prepare image row: {e}")
                 continue
-        
+
+        # Batch insert all images at once
+        try:
+            cursor.executemany("""
+                INSERT INTO images (
+                    group_id, algorithm, is_master, file, name, path,
+                    size_bytes, created_date, modified_date, width, height,
+                    file_type, camera_make, camera_model, date_taken,
+                    quality_score, iptc_keywords, iptc_caption,
+                    xmp_keywords, xmp_title, similarity_score, match_reasons,
+                    file_exists
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, insert_data)
+
+            images_inserted = len(insert_data)
+            logger.info(f"Batch inserted {images_inserted} images into database")
+
+        except Exception as e:
+            logger.error(f"Failed to batch insert images: {e}")
+            # Fallback to individual inserts if batch fails
+            images_inserted = 0
+            for data in insert_data:
+                try:
+                    cursor.execute("""
+                        INSERT INTO images (
+                            group_id, algorithm, is_master, file, name, path,
+                            size_bytes, created_date, modified_date, width, height,
+                            file_type, camera_make, camera_model, date_taken,
+                            quality_score, iptc_keywords, iptc_caption,
+                            xmp_keywords, xmp_title, similarity_score, match_reasons,
+                            file_exists
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, data)
+                    images_inserted += 1
+                except Exception as e2:
+                    logger.warning(f"Failed to insert individual image row: {e2}")
+
         # Generate group summaries
         self._update_group_summaries()
-        
+
         self.connection.commit()
-        logger.info(f"Inserted {images_inserted} images into database")
+        logger.info(f"Total images processed: {images_inserted}")
     
     def _clean_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         """Clean and standardize the dataframe."""
@@ -305,29 +344,31 @@ class DatabaseManager:
     
     def get_group_list(self) -> List[str]:
         """Get list of all group IDs."""
+        self.ensure_connection()
         cursor = self.connection.cursor()
         cursor.execute("SELECT group_id FROM groups ORDER BY group_id")
         return [row['group_id'] for row in cursor.fetchall()]
-    
+
     def get_group_summary(self, group_id: str) -> Dict[str, Any]:
         """Get summary information for a specific group."""
+        self.ensure_connection()
         cursor = self.connection.cursor()
         cursor.execute("""
             SELECT * FROM groups WHERE group_id = ?
         """, (group_id,))
-        
+
         row = cursor.fetchone()
         if not row:
             return {}
-        
+
         # Get match reasons for the group
         cursor.execute("""
-            SELECT DISTINCT match_reasons FROM images 
+            SELECT DISTINCT match_reasons FROM images
             WHERE group_id = ? AND match_reasons IS NOT NULL AND match_reasons != ''
         """, (group_id,))
-        
+
         match_reasons = [r['match_reasons'] for r in cursor.fetchall()]
-        
+
         return {
             'group_id': row['group_id'],
             'algorithm': row['algorithm'],
@@ -337,50 +378,52 @@ class DatabaseManager:
             'missing_images': row['total_images'] - row['existing_images'],
             'match_reasons': ', '.join(match_reasons) if match_reasons else 'Unknown'
         }
-    
+
     def get_group_images(self, group_id: str) -> pd.DataFrame:
         """Get all images for a specific group."""
+        self.ensure_connection()
         cursor = self.connection.cursor()
         cursor.execute("""
             SELECT * FROM images WHERE group_id = ? ORDER BY is_master DESC, quality_score DESC
         """, (group_id,))
-        
+
         rows = cursor.fetchall()
         if not rows:
             return pd.DataFrame()
-        
+
         # Convert to DataFrame
         columns = [col[0] for col in cursor.description]
         data = [dict(row) for row in rows]
         return pd.DataFrame(data, columns=columns)
-    
+
     def get_overall_summary(self) -> Dict[str, Any]:
         """Get overall summary statistics."""
+        self.ensure_connection()
         cursor = self.connection.cursor()
-        
+
         # Get basic counts
         cursor.execute("SELECT COUNT(*) as total_groups FROM groups")
         total_groups = cursor.fetchone()['total_groups']
-        
+
         cursor.execute("SELECT COUNT(*) as total_images FROM images")
         total_images = cursor.fetchone()['total_images']
-        
+
         cursor.execute("SELECT COUNT(*) as missing_images FROM images WHERE NOT file_exists")
         missing_images = cursor.fetchone()['missing_images']
-        
+
         cursor.execute("SELECT COUNT(*) as master_images FROM images WHERE is_master")
         master_images = cursor.fetchone()['master_images']
-        
+
         # Get quality statistics
         cursor.execute("""
-            SELECT 
+            SELECT
                 AVG(quality_score) as avg_quality,
                 MIN(quality_score) as min_quality,
                 MAX(quality_score) as max_quality
             FROM images WHERE quality_score IS NOT NULL
         """)
         quality_stats = cursor.fetchone()
-        
+
         return {
             'total_groups': total_groups,
             'total_images': total_images,
@@ -391,19 +434,20 @@ class DatabaseManager:
             'min_quality_score': quality_stats['min_quality'],
             'max_quality_score': quality_stats['max_quality']
         }
-    
+
     def validate_file_paths(self):
         """Re-validate file existence for all images."""
+        self.ensure_connection()
         cursor = self.connection.cursor()
         cursor.execute("SELECT id, path FROM images")
-        
+
         updates = 0
         for row in cursor.fetchall():
             file_exists = self._check_file_exists(row['path'])
-            cursor.execute("UPDATE images SET file_exists = ? WHERE id = ?", 
+            cursor.execute("UPDATE images SET file_exists = ? WHERE id = ?",
                          (file_exists, row['id']))
             updates += 1
-        
+
         self.connection.commit()
         logger.info(f"Validated {updates} file paths")
     
