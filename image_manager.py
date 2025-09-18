@@ -22,23 +22,27 @@ logger = logging.getLogger('lineup.image_manager')
 
 class ImageManager:
     """Handles image loading, thumbnail generation, and caching."""
-    
+
     def __init__(self, cache_dir: str = ".image_cache"):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(exist_ok=True)
-        
+
         # In-memory cache for loaded images
         self.image_cache: Dict[str, ImageTk.PhotoImage] = {}
         self.thumbnail_cache: Dict[str, ImageTk.PhotoImage] = {}
-        
+
         # Cache metadata
         self.cache_metadata_file = self.cache_dir / "cache_metadata.json"
         self.cache_metadata = self._load_cache_metadata()
-        
+
         # Thumbnail settings
         self.thumbnail_size = (150, 150)
         self.preview_size = (400, 400)
-        
+
+        # Pre-loading state
+        self.preload_threads = {}  # Track active preload threads
+        self.max_cache_size = 50  # Limit memory usage
+
         logger.info(f"ImageManager initialized with cache dir: {self.cache_dir}")
         logger.debug(f"Thumbnail size: {self.thumbnail_size}, Preview size: {self.preview_size}")
     
@@ -210,21 +214,81 @@ class ImageManager:
         except Exception as e:
             return {'error': str(e)}
     
+    def preload_group_images(self, file_paths: list, group_id: str = None, priority: bool = False):
+        """Pre-load images for a group in background thread."""
+        if not file_paths:
+            return
+
+        # Cancel existing preload for this group if any
+        if group_id and group_id in self.preload_threads:
+            # Don't interrupt if already running
+            if self.preload_threads[group_id].is_alive():
+                logger.debug(f"Preload already running for group {group_id}")
+                return
+
+        def preload_worker():
+            logger.debug(f"Starting preload for group {group_id} with {len(file_paths)} images")
+            loaded_count = 0
+
+            for file_path in file_paths:
+                if not Path(file_path).exists():
+                    continue
+
+                # Check if already cached
+                cache_key = self._get_cache_key(file_path, self.preview_size)
+                if cache_key in self.image_cache:
+                    continue
+
+                # Manage cache size
+                if len(self.image_cache) >= self.max_cache_size:
+                    self._evict_oldest_cache_entries()
+
+                try:
+                    # Load preview image
+                    self.load_preview_image(file_path)
+                    loaded_count += 1
+                    logger.debug(f"Pre-loaded image {loaded_count}/{len(file_paths)}: {Path(file_path).name}")
+                except Exception as e:
+                    logger.warning(f"Failed to preload {file_path}: {e}")
+
+            logger.info(f"Preload complete for group {group_id}: {loaded_count} images loaded")
+
+        thread = threading.Thread(target=preload_worker, daemon=True)
+        thread.start()
+
+        if group_id:
+            self.preload_threads[group_id] = thread
+
+    def _evict_oldest_cache_entries(self):
+        """Remove oldest cache entries to manage memory usage."""
+        if len(self.image_cache) <= self.max_cache_size * 0.8:
+            return
+
+        # Remove 20% of cache entries (simple FIFO for now)
+        entries_to_remove = max(1, len(self.image_cache) // 5)
+        keys_to_remove = list(self.image_cache.keys())[:entries_to_remove]
+
+        for key in keys_to_remove:
+            del self.image_cache[key]
+
+        logger.debug(f"Evicted {len(keys_to_remove)} cache entries for memory management")
+
     def clear_cache(self):
         """Clear all caches."""
         self.image_cache.clear()
         self.thumbnail_cache.clear()
-        
+        self.preload_threads.clear()
+
         # Clear disk cache
         try:
             for cache_file in self.cache_dir.glob("*.png"):
                 cache_file.unlink()
-            
+
             self.cache_metadata.clear()
             self._save_cache_metadata()
-            
+
             logging.info("Image cache cleared")
-            
+
         except Exception as e:
             logging.error(f"Could not clear cache: {e}")
 
@@ -689,34 +753,55 @@ class ImageViewerWindow:
             if max_width <= 1 or max_height <= 1:
                 max_width = 800  # Increased default from 600
                 max_height = 600  # Increased default from 400
-            
+
+            # Check if we have a cached preview image that's close to our target size
+            cache_key = self.image_manager._get_cache_key(file_path, self.image_manager.preview_size)
+            cached_image = self.image_manager.image_cache.get(cache_key)
+
+            if cached_image:
+                # Use cached image if available - much faster
+                self.image_label.configure(image=cached_image, text="")
+                self.image_label.image = cached_image
+
+                # Get original dimensions for title
+                try:
+                    with Image.open(file_path) as img:
+                        img_width, img_height = img.size
+                        self.window.title(f"Image Viewer - {Path(file_path).name} ({img_width}×{img_height})")
+                except:
+                    self.window.title(f"Image Viewer - {Path(file_path).name}")
+
+                logger.debug(f"Used cached image for {Path(file_path).name}")
+                return
+
+            # Load fresh image if not cached
             with Image.open(file_path) as image:
                 # Convert to RGB if necessary
                 if image.mode in ('RGBA', 'LA', 'P'):
                     image = image.convert('RGB')
-                
+
                 # Calculate size to fit window while maintaining aspect ratio
                 img_width, img_height = image.size
                 scale_width = max_width / img_width
                 scale_height = max_height / img_height
                 scale = min(scale_width, scale_height)  # Allow upscaling for better screen utilization
-                
+
                 new_width = int(img_width * scale)
                 new_height = int(img_height * scale)
-                
+
                 # Resize image
                 resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                
+
                 # Create PhotoImage and display
                 photo_image = ImageTk.PhotoImage(resized_image)
                 self.image_label.configure(image=photo_image, text="")
-                
+
                 # Keep reference to prevent garbage collection
                 self.image_label.image = photo_image
-                
+
                 # Update window title with image info
                 self.window.title(f"Image Viewer - {Path(file_path).name} ({img_width}×{img_height})")
-                
+
         except Exception as e:
             logging.error(f"Could not load image {file_path}: {e}")
             self.image_label.configure(

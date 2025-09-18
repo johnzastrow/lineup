@@ -806,15 +806,18 @@ class LineupApp:
     def select_group(self, group_id: str):
         """Select and display a specific group."""
         logger.info(f"Selecting group: {group_id}")
-        
+
         # Update visual feedback for group buttons
         self.update_group_selection_visual(group_id)
-        
+
         self.current_group = group_id
-        
+
         # Get group info for logging
         summary = self.data_manager.get_group_summary(group_id)
         logger.debug(f"Group {group_id} summary: {summary}")
+
+        # Pre-load adjacent groups for faster navigation
+        self.preload_adjacent_groups(group_id)
         
         # Clear display area
         for widget in self.display_frame.winfo_children():
@@ -1399,6 +1402,35 @@ class LineupApp:
         
         self.prev_group_btn.configure(state=state)
         self.next_group_btn.configure(state=state)
+
+    def preload_adjacent_groups(self, current_group_id: str):
+        """Pre-load images for previous and next groups for faster navigation."""
+        if not self.data_manager.has_data():
+            return
+
+        group_list = self.data_manager.get_group_list()
+        if current_group_id not in group_list:
+            return
+
+        current_index = group_list.index(current_group_id)
+
+        # Pre-load previous group
+        if current_index > 0:
+            prev_group_id = group_list[current_index - 1]
+            prev_group_data = self.data_manager.get_group(prev_group_id)
+            if prev_group_data is not None:
+                file_paths = [row['Path'] for _, row in prev_group_data.iterrows() if row.get('FileExists', False)]
+                self.image_manager.preload_group_images(file_paths, f"prev_{prev_group_id}")
+                logger.debug(f"Started preloading previous group {prev_group_id} with {len(file_paths)} images")
+
+        # Pre-load next group
+        if current_index < len(group_list) - 1:
+            next_group_id = group_list[current_index + 1]
+            next_group_data = self.data_manager.get_group(next_group_id)
+            if next_group_data is not None:
+                file_paths = [row['Path'] for _, row in next_group_data.iterrows() if row.get('FileExists', False)]
+                self.image_manager.preload_group_images(file_paths, f"next_{next_group_id}")
+                logger.debug(f"Started preloading next group {next_group_id} with {len(file_paths)} images")
 
     def toggle_dark_mode(self):
         """Toggle between light and dark mode."""
